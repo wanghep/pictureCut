@@ -6,6 +6,11 @@
 #include "pictureCut.h"
 #include "pictureCutDlg.h"
 #include "afxdialogex.h"
+#include<opencv2\opencv.hpp>
+#include "cv.h"     
+#include "highgui.h"   
+using namespace cv;
+using namespace std;
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -36,6 +41,7 @@ CAboutDlg::CAboutDlg() : CDialogEx(CAboutDlg::IDD)
 
 void CAboutDlg::DoDataExchange(CDataExchange* pDX)
 {
+	
 	CDialogEx::DoDataExchange(pDX);
 }
 
@@ -51,6 +57,7 @@ END_MESSAGE_MAP()
 CpictureCutDlg::CpictureCutDlg(CWnd* pParent /*=NULL*/)
 	: CDialogEx(CpictureCutDlg::IDD, pParent)
 {
+	//showImageMat = NULL;
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
 
@@ -63,7 +70,10 @@ BEGIN_MESSAGE_MAP(CpictureCutDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
-	ON_BN_CLICKED(IDC_START, &CpictureCutDlg::OnBnClickedStart)
+	ON_BN_CLICKED(IDC_START2, &CpictureCutDlg::OnBnClickedStart2)
+	ON_BN_CLICKED(IDC_ZOOM_UP, &CpictureCutDlg::OnBnClickedZoomUp)
+	ON_BN_CLICKED(IDC_ZOOM_DOWN, &CpictureCutDlg::OnBnClickedZoomDown)
+	ON_NOTIFY(NM_THEMECHANGED, IDC_SHOW_PICTURE, &CpictureCutDlg::OnThemechangedShowPicture)
 END_MESSAGE_MAP()
 
 
@@ -99,6 +109,7 @@ BOOL CpictureCutDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// 设置小图标
 
 	// TODO: 在此添加额外的初始化代码
+
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -141,6 +152,11 @@ void CpictureCutDlg::OnPaint()
 	}
 	else
 	{
+		
+		if( !showImageMat.empty() )
+		{
+			showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat );
+		}
 		CDialogEx::OnPaint();
 	}
 }
@@ -154,7 +170,130 @@ HCURSOR CpictureCutDlg::OnQueryDragIcon()
 
 
 
-void CpictureCutDlg::OnBnClickedStart()
+
+
+void CpictureCutDlg::OnBnClickedStart2()
+{
+	CFileDialog dlg(TRUE,("png"),(".png"),OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,("PNG file(*.png)|*.png||"));
+
+	dlg.DoModal();	
+
+	if( dlg.GetPathName().IsEmpty() )
+	{
+		std::cout << "read data error!" << std::endl;
+		return ;
+	}
+	else
+	{
+		/// Load source image and convert it to gray  
+		
+		cv::String cvFileName ;
+		cvFileName = dlg.GetPathName().GetBuffer(0);
+		srcMat = imread(cvFileName);
+
+		roiRect.x = 0;
+		roiRect.y = 0;
+		roiRect.height = srcMat.rows;
+		roiRect.width = srcMat.cols;
+
+		
+		showImageMat = srcMat(roiRect ).clone();
+		showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat );
+	}
+
+
+	
+}
+
+void CpictureCutDlg::showMatImgToWnd(CWnd* pWnd, const cv::Mat& img)
+{ 
+    if(img.empty()) 
+        return; 
+	 static BITMAPINFO *bitMapinfo = NULL;
+	 static bool First=TRUE;
+	 if(First)
+	 {  
+		  BYTE *bitBuffer = new BYTE[40+4*256];//开辟一个内存区域
+		  if(bitBuffer == NULL)
+		  { 
+		   return;
+		  }
+		  First=FALSE;
+		  memset(bitBuffer, 0, 40+4*256);
+		  bitMapinfo = (BITMAPINFO *)bitBuffer;
+		  bitMapinfo->bmiHeader.biSize   = sizeof(BITMAPINFOHEADER);
+		  bitMapinfo->bmiHeader.biPlanes   = 1;   
+		  for(int i=0; i<256; i++)
+		  { //颜色的取值范围 (0-255)
+		   bitMapinfo->bmiColors[i].rgbBlue  =bitMapinfo->bmiColors[i].rgbGreen =bitMapinfo->bmiColors[i].rgbRed   =(BYTE) i;
+		  } 
+	  }
+	  bitMapinfo->bmiHeader.biHeight = -img.rows;   
+	  bitMapinfo->bmiHeader.biWidth = img.cols;
+	  bitMapinfo->bmiHeader.biBitCount= img.channels() *8;    
+ 
+	 CRect drect;       
+	 pWnd->GetClientRect(drect);    //pWnd指向CWnd类的一个指针 
+	 CClientDC dc(pWnd);
+	 HDC hDC =dc.GetSafeHdc();                  //HDC是Windows的一种数据类型，是设备描述句柄；
+	 SetStretchBltMode(hDC, COLORONCOLOR);    
+	 
+	 StretchDIBits(hDC,
+		 0,
+		 0,
+		 drect.Width(),     
+		 drect.Height(),    		 
+		 0,
+		 0,
+		 img.cols,     //图像宽度
+		 img.rows,     //图像高度
+		 img.data,   
+		 bitMapinfo,   
+		 DIB_RGB_COLORS, 
+		 SRCCOPY
+		  );
+}
+
+
+//放大图片
+void CpictureCutDlg::OnBnClickedZoomUp()
 {
 	// TODO: 在此添加控件通知处理程序代码
+
+	roiRect.width /= 2;
+	roiRect.height /= 2;
+
+	showImageMat = srcMat(roiRect ).clone();
+	showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat );
+
+	/*
+	namedWindow("loveLena", CV_WINDOW_AUTOSIZE); 
+    //显示图片。如果你不介意窗口大小可变，可以直接注释掉上一句。因为imshow可以直接创建窗口
+    imshow("loveLena", showImageMat);
+    waitKey(); //等待按键
+	*/
+ 
+}
+
+
+void CpictureCutDlg::OnBnClickedZoomDown()
+{
+	if( roiRect.width < srcMat.cols )
+	{
+		roiRect.width *= 2;
+		roiRect.height *= 2;
+
+
+		showImageMat = srcMat(roiRect ).clone();
+		showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat );
+	}
+}
+
+
+void CpictureCutDlg::OnThemechangedShowPicture(NMHDR *pNMHDR, LRESULT *pResult)
+{
+	// 该功能要求使用 Windows XP 或更高版本。
+	// 符号 _WIN32_WINNT 必须 >= 0x0501。
+	// TODO: 在此添加控件通知处理程序代码
+	*pResult = 0;
 }
