@@ -197,7 +197,8 @@ void CpictureCutDlg::OnBnClickedStart2()
 		roiRect.width = srcMat.cols;
 
 		
-		showImageMat = srcMat(roiRect ).clone();
+		subSrcImageMat = srcMat(roiRect ).clone();
+		showImageMat = subSrcImageMat.clone();
 		showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat );
 	}
 
@@ -263,7 +264,8 @@ void CpictureCutDlg::OnBnClickedZoomUp()
 	roiRect.width /= 2;
 	roiRect.height /= 2;
 
-	showImageMat = srcMat(roiRect ).clone();
+	subSrcImageMat = srcMat(roiRect ).clone();
+	showImageMat = subSrcImageMat.clone();
 	showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat );
 
 	/*
@@ -278,15 +280,37 @@ void CpictureCutDlg::OnBnClickedZoomUp()
 
 void CpictureCutDlg::OnBnClickedZoomDown()
 {
-	if( roiRect.width < srcMat.cols )
+	roiRect.x -= (roiRect.width/2);
+	roiRect.y -= (roiRect.height/2);
+	
+	roiRect.width *= 2;
+	roiRect.height *= 2;
+
+	if( roiRect.x  < 0 ) 
 	{
-		roiRect.width *= 2;
-		roiRect.height *= 2;
-
-
-		showImageMat = srcMat(roiRect ).clone();
-		showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat );
+		roiRect.x = 0;
 	}
+
+	if( roiRect.y  < 0 ) 
+	{
+		roiRect.y = 0;
+	}
+	
+	if( roiRect.width > srcMat.cols )
+	{
+		roiRect.width = srcMat.cols;
+
+	}
+	if( roiRect.height > srcMat.rows )
+	{
+		roiRect.height = srcMat.rows;
+	}
+
+	
+	subSrcImageMat = srcMat(roiRect ).clone();
+	showImageMat = subSrcImageMat.clone();
+	showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat );
+	
 }
 
 
@@ -297,3 +321,47 @@ void CpictureCutDlg::OnThemechangedShowPicture(NMHDR *pNMHDR, LRESULT *pResult)
 	// TODO: 在此添加控件通知处理程序代码
 	*pResult = 0;
 }
+
+int start_xPos = 0;
+int start_yPos = 0;
+
+int end_xPos = 0;
+int end_yPos = 0;
+
+BOOL CpictureCutDlg::PreTranslateMessage(MSG* pMsg)
+{
+	// TODO: 在此添加专用代码和/或调用基类
+	 if (pMsg->message==WM_LBUTTONDOWN)
+	 {
+		  if (pMsg->hwnd == GetDlgItem(IDC_SHOW_PICTURE)->m_hWnd)
+		  {
+			  start_xPos = GET_X_LPARAM(pMsg->lParam);  
+			  start_yPos = GET_Y_LPARAM(pMsg->lParam);  
+
+		   //SetDlgItemText(IDC_STATIC_SHOW1,"BUN1 DOWN");
+		  } 
+	 }
+
+	 if (pMsg->message==WM_LBUTTONUP)
+	 {
+		if (pMsg->hwnd == GetDlgItem(IDC_SHOW_PICTURE)->m_hWnd)
+		{
+			  end_xPos = GET_X_LPARAM(pMsg->lParam);  
+			  end_yPos = GET_Y_LPARAM(pMsg->lParam);  
+
+		   //SetDlgItemText(IDC_STATIC_SHOW1,"BUN1 DOWN");
+		} 
+	 }
+	 if(pMsg->message==WM_MOUSEMOVE)
+	 {
+		  if (pMsg->hwnd == GetDlgItem(IDC_SHOW_PICTURE)->m_hWnd)
+		  {
+		   //SetDlgItemText(IDC_SHOW_PICTURE,"BUN1 UP");
+			  end_xPos = GET_X_LPARAM(pMsg->lParam);  
+			  end_yPos = GET_Y_LPARAM(pMsg->lParam);  
+		  } 
+	 }
+
+ return CDialog::PreTranslateMessage(pMsg);
+}
+	

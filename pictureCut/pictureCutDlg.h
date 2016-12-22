@@ -26,7 +26,10 @@ public:
 // 实现
 private:
 	cv::Mat srcMat;
+	cv::Mat subSrcImageMat; // 缩放或指定rect的图像
+
 	cv::Mat showImageMat; // 用于输出显示的mat ，在srcMat上叠加自定义指示
+
 	CvRect  roiRect ; // 限制显示区域的 
 
 protected:
@@ -47,4 +50,5 @@ public:
 	afx_msg void OnBnClickedZoomUp();
 	afx_msg void OnBnClickedZoomDown();
 	afx_msg void OnThemechangedShowPicture(NMHDR *pNMHDR, LRESULT *pResult);
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
 };
