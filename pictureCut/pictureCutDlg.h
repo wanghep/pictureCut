@@ -5,11 +5,13 @@
 #include<opencv2\opencv.hpp>
 #include "cv.h"     
 #include "highgui.h"  
+#include "algorithm\PictureCutAlgorithm.h"
 
 #pragma once
 using namespace cv;
 
 // CpictureCutDlg 对话框
+
 class CpictureCutDlg : public CDialogEx
 {
 // 构造
@@ -31,7 +33,11 @@ private:
 	cv::Mat showImageMat; // 用于输出显示的mat ，在srcMat上叠加自定义指示
 
 	CvRect  roiRect ; // 限制显示区域的 
+	vector<vector<Point> >  contours ; // srcMat上的连通域 
 
+	PictureCutAlgorithm Pca;
+
+	BOOL showSourcePicture;
 protected:
 	HICON m_hIcon;
 
@@ -45,10 +51,17 @@ public:
 	afx_msg void OnBnClickedStart2();
 
 private:
-	void showMatImgToWnd(CWnd* pWnd, const cv::Mat& img);
+	//void showMatImgToWnd(CWnd* pWnd, const cv::Mat& img);
+	void Update( Point *pt1 = NULL, Point *pt2 = NULL );
+	void showMatImgToWnd( CWnd* pWnd, cv::Mat img );
 public:
 	afx_msg void OnBnClickedZoomUp();
 	afx_msg void OnBnClickedZoomDown();
 	afx_msg void OnThemechangedShowPicture(NMHDR *pNMHDR, LRESULT *pResult);
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
+	CStatic m_showPicture;
+	afx_msg void OnClickedShowPicture();
+	afx_msg void OnBnClickedCut();
+
+	afx_msg void OnBnShowSourcePicture();
 };
