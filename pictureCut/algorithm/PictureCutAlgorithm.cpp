@@ -4,20 +4,27 @@
 
 using namespace cv;
 using namespace std;
+void coordinateTranslate( vector<vector<Point> >*contours , CvRect  transRect );
 
 PictureCutAlgorithm::PictureCutAlgorithm( )
 {
 	this->srcMat = NULL;
+	threshold1 = 80;
+	threshold2 = 255;
 }
 
 PictureCutAlgorithm::PictureCutAlgorithm( String  fileName )
 {
 	this->fileName = fileName;
+	threshold1 = 80;
+	threshold2 = 255;
 }
 
 PictureCutAlgorithm::PictureCutAlgorithm( cv::Mat mat )
 {
 	this->srcMat = mat;
+	threshold1 = 80;
+	threshold2 = 255;
 }
 
 
@@ -50,29 +57,205 @@ bool PictureCutAlgorithm::openFile()
 void PictureCutAlgorithm::colorPictureToGray()
 {
 }
-	//检测出所有轮廓 // 
-	//直接读取文件
-void PictureCutAlgorithm::pickOutAllContours()
+
+void PictureCutAlgorithm::setThreshold( double  threshold1 , double  threshold2 )
 {
-	blur(srcMat, srcMat, Size(3, 3));
+	this->threshold1 = threshold1;
+	this->threshold2 = threshold2;
+}
+
+//need to call cvReleaseMat( ) after use return mat finished;
+cv::Mat* changeRGBToStandGray(cv::Mat * src, Vec3b &elem )
+{
+
+	cv::Mat *img = new cv::Mat( src->rows, src->cols, CV_8UC1 ); 
+	//cvGetImage(src, img);
+	for (int i = 0; i < img->rows; i++)
+	{
+		for (int j = 0; j < img->cols; j++)
+		{
+			//img->at<uchar>(i,j);		
+			Vec3b &s = src->at<Vec3b>(i,j);//s.val[0], s.val[1], s.val[2] B G R
+			int tempB = abs(s[0] - elem[0]);
+			//s.val[0] = tempB;
+
+			int tempG = abs(s[1] - elem[1]);
+			//s.val[1] = tempG;
+
+			int tempR = abs(s[2] - elem[2]);
+			//s.val[2] = tempR;
+
+			//255*255*3 相当于 255
+			img->at<uchar>(i,j) = (tempB*tempB + tempG*tempG + tempR*tempR)/765;
+		}
+
+		
+	}
+
+	return img;
+}
 
 
+// 此 contour 肯定在当前的mat中 , 返回新的contours
+vector<vector<Point> > PictureCutAlgorithm::confirmContour( vector<Point>  *needConfirmContour )
+{
+	map< int , vector<Point>*> PointSet ;
 	
+
+	Rect roiRect( 0 , 0 , 1 , 1 );
+
+	int Left,Right,Top,Bottom ;
+	Left = Right = (*needConfirmContour)[0].x;
+	Top = Bottom = (*needConfirmContour)[0].y;
+
+	for( int i = 0 ; i < needConfirmContour->size() ; i++ )
+	{
+		Point cur = (*needConfirmContour)[i];
+
+		if( Left > cur.x )
+		{
+			Left = cur.x;
+		}
+		if( Right < cur.x )
+		{
+			Right = cur.x;
+		}
+		if( Top > cur.y )
+		{
+			Top = cur.y;
+		}
+		if( Bottom < cur.y )
+		{
+			Bottom = cur.y;
+		}
+
+		Vec3b &elem = srcMat.at<Vec3b>(cur);
+		//Vec3b &deleteMatEle = deleteMat.at<Vec3b>(cur);
+
+		//CvScalar value = cvGet2D( &srcMat , cur.y , cur.x );
+
+		int total = elem[0] +  elem[1] +  elem[2];
+		if( PointSet.count( total )<=0 ) 
+		{
+			vector<Point> *allocVector = new vector<Point>;
+
+			PointSet.insert( make_pair(total , allocVector ));
+		}
+		(*PointSet[total]).push_back( cur );
+	}
+
+	//cv::Mat deleteMat = cv::Mat::zeros( srcMat.size() ,CV_8UC3 );
+	//imshow( "show2", deleteMat );
+	//waitKey( 9999999999 );
+
+	int NumberOfMaxPointSet = 0;
+	Point selectPoint;
+
+	map< int , vector<Point>*>  :: iterator   iter;
+	for(  iter=PointSet.begin();     iter!=PointSet.end();   iter++)
+    {
+        vector<Point> *p = iter ->second;
+		if( p->size() > NumberOfMaxPointSet )
+		{
+			NumberOfMaxPointSet = p->size();
+			selectPoint = (*p)[0];
+		}
+		delete( p );
+    }
+
+	Left = ( Left > 10 ) ? ( Left -10 ): 0 ;
+	Top = ( Top > 10 ) ? ( Top -10 ): 0 ;
+	Right = ( Right + 10 ) < srcMat.cols  ? ( Right + 10 ): ( srcMat.cols -2 ) ;
+	Bottom = ( Bottom + 10 ) < srcMat.rows  ? ( Bottom + 10 ): ( srcMat.rows -2 ) ;
+
+	roiRect.x = Left;
+	roiRect.y = Top;
+	roiRect.width = Right - Left + 1;
+	roiRect.height = Bottom - Top + 1;
+
+	static int enterCount = 0;
+	enterCount++;
+	
+	cv::Mat roiMat = srcMat( roiRect ).clone();
+	
+	
+	Vec3b &standardS = srcMat.at<Vec3b>( selectPoint ); 
+	if( enterCount == 65 )
+	{
+		enterCount = 65;
+	}
+	cv::Mat * grayMat = changeRGBToStandGray( &roiMat, standardS );
+
+	if( enterCount == 65 )
+	{	
+		for( int i = -5 ; i < 10 ; i ++ )
+		{
+			for( int j = -5 ; j < 10 ; j ++ )
+			{
+				roiMat.at<Vec3b>( selectPoint.x - Left + i, selectPoint.y - Top + j )[0] = 0;
+				roiMat.at<Vec3b>( selectPoint.x - Left + i, selectPoint.y - Top + j )[1] = 0;
+				roiMat.at<Vec3b>( selectPoint.x - Left + i, selectPoint.y - Top + j )[2] = 255;
+			}
+		}
+		
+
+		imshow("roiMat", roiMat );
+		imshow("grayMat", *grayMat );
+		waitKey();
+	}
+
+	vector<vector<Point> > NewContours;
+	pickOutAllContoursInMat( (*grayMat) , &NewContours );
+
+	//contours 坐标转换
+	coordinateTranslate( &NewContours , roiRect );
+
+	delete grayMat;
+
+	return NewContours;
+
+
+}
+
+vector<vector<Point> > PictureCutAlgorithm::confirmContours( vector<vector<Point> > needConfirmContours  )
+{
+	vector<vector<Point> > ret;
+	for( int i = 0 ; i < needConfirmContours.size() ; i++ )
+	{
+		vector<vector<Point> > result = confirmContour( &needConfirmContours[i] );
+
+		ret.insert( ret.end(), result.begin() , result.end() );
+	}
+
+
+	return ret;
+}
+
+void PictureCutAlgorithm::pickOutAllContoursInMat( cv::Mat in ,vector<vector<Point> > *out )
+{
+	//blur(srcMat, srcMat, Size(3, 3));
+
 	vector<Vec4i> hierarchy;
 
+	cv::Mat canny_output;
 	/// Detect edges using canny  
-	Canny(srcMat, canny_output, 80, 255, 3);
+	//imshow( "srcMat" , srcMat );
+	Canny(in, canny_output, threshold1, threshold2, 3);
+
+	//imshow( "canny_output" , canny_output );
 	/// Find contours  
-	findContours(canny_output, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+	
+	(*out).empty();	// first empty
+	findContours(canny_output, (*out), hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_NONE, Point(0, 0));
 	//CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE  
 
 	double maxarea = 0;
 	int maxAreaIdx = 0;
 
-	for (int i = 0; i<contours.size(); i++)
+	for (int i = 0; i<(*out).size(); i++)
 	{
 
-		double tmparea = fabs(contourArea(contours[i]));
+		double tmparea = fabs(contourArea((*out)[i]));
 		if (tmparea>maxarea)
 		{
 			maxarea = tmparea;
@@ -80,15 +263,15 @@ void PictureCutAlgorithm::pickOutAllContours()
 			continue;
 		}
 
-		if (tmparea < 50)
+		if (tmparea < 10)
 		{
 			//删除面积小于设定值的轮廓  
-			contours.erase(contours.begin() + i);
+			(*out).erase((*out).begin() + i);
 			std::wcout << "delete a small area" << std::endl;
 			continue;
 		}
 		//计算轮廓的直径宽高  
-		Rect aRect = boundingRect(contours[i]);
+		Rect aRect = boundingRect((*out)[i]);
 		//if ((aRect.width / aRect.height)<whRatio)
 		//{
 			//删除宽高比例小于设定值的轮廓  
@@ -97,10 +280,26 @@ void PictureCutAlgorithm::pickOutAllContours()
 		//	continue;
 		//}
 	}
+	return ;
+}
+
+	//检测出所有轮廓 // 
+	//直接读取文件
+void PictureCutAlgorithm::pickOutAllContours()
+{
+	vector<vector<Point> > allContours;
+
+	pickOutAllContoursInMat( srcMat , &allContours );	
+
+	//contours = confirmContours( allContours  );
+
+	contours = allContours;
 }
 
 vector<vector<Point> > PictureCutAlgorithm::getAllContours()
 {
+
+	
 	return contours;
 }
 
@@ -292,6 +491,7 @@ vector<Point> PictureCutAlgorithm::clickFind(Point point)
 	return reVec;
 }
 
+// 根据 srcRect 映射到 dstRect 的关系，计算出 point 应该映射到哪里（rePoint）
 void refect( Rect srcRect, Rect dstRect, Point point, Point *rePoint){
 	int img_height = srcRect.height;
 	int img_width = srcRect.width;
@@ -315,4 +515,19 @@ void refect( Rect srcRect, Rect dstRect, Point point, Point *rePoint){
     perspectiveTransform( ponits, points_trans, transform);
 	rePoint->x = points_trans[0].x;
 	rePoint->y = points_trans[0].y;
+}
+
+
+void coordinateTranslate( vector<vector<Point> >*contours , CvRect  transRect )
+{
+	int contoursSize = contours->size() ;
+
+	for( int i = 0 ; i < contoursSize ; i++  )
+	{
+		for( int j = 0 ; j < (*contours)[i].size() ; j++ )
+		{
+			(*contours)[i][j].x += transRect.x;
+			(*contours)[i][j].y += transRect.y;
+		}
+	}
 }

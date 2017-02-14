@@ -183,9 +183,15 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <None Include="..\..\..\..\Users\wanghp1\Desktop\point.bmp" />
+    <None Include="..\..\..\..\Users\wanghp1\Desktop\point.png" />
     <None Include="ReadMe.txt" />
+    <None Include="res\bitmap1.bmp" />
+    <None Include="res\mulSelect.bmp" />
     <None Include="res\pictureCut.ico" />
     <None Include="res\pictureCut.rc2" />
+    <None Include="res\point.bmp" />
+    <None Include="res\rangeSelect.bmp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="algorithm\PictureCutAlgorithm.h" />

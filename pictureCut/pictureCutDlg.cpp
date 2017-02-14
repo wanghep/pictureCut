@@ -17,9 +17,12 @@ using namespace std;
 #endif
 
 
-// 用于应用程序“关于”菜单项的 CAboutDlg 对话框
 
+// 用于应用程序“关于”菜单项的 CAboutDlg 对话框
+void coordinateTranslate( vector<vector<Point> >*contours , CvRect  transRect );
 void refect( Rect srcRect, Rect dstRect, Point point, Point *rePoint);
+bool contoursInRoi( vector<Point> contour , CvRect roiRect );
+
 class CAboutDlg : public CDialogEx
 {
 public:
@@ -60,12 +63,34 @@ CpictureCutDlg::CpictureCutDlg(CWnd* pParent /*=NULL*/)
 {
 	//showImageMat = NULL;
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
+	cannyThreshold1 = 80;
+	cannyThreshold2 = 255;
+	showBuffer = NULL;
+	bitBuffer = NULL;
 }
 
+CpictureCutDlg::~CpictureCutDlg()
+{
+	if( showBuffer != NULL )
+	{
+		delete []showBuffer;
+	}
+	if( bitBuffer != NULL )
+	{
+		delete []bitBuffer;
+	}
+	
+}
 void CpictureCutDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
 	DDX_Control(pDX, IDC_SHOW_PICTURE, m_showPicture);
+	DDX_Text(pDX, IDC_THREADSHOLD1, cannyThreshold1);
+	DDV_MinMaxUInt(pDX, cannyThreshold1, 1, 10000);
+	DDX_Text(pDX, IDC_THREADSHOLD2, cannyThreshold2);
+	DDV_MinMaxUInt(pDX, cannyThreshold2, 1, 10000);
+	DDX_Control(pDX, IDC_SELECT, m_selectbtn);
+	DDX_Control(pDX, IDC_RANGE_SELECT, m_rangeSelectbtn);
 }
 
 BEGIN_MESSAGE_MAP(CpictureCutDlg, CDialogEx)
@@ -79,6 +104,28 @@ BEGIN_MESSAGE_MAP(CpictureCutDlg, CDialogEx)
 	ON_STN_CLICKED(IDC_SHOW_PICTURE, &CpictureCutDlg::OnClickedShowPicture)
 	ON_BN_CLICKED(IDC_ZOOM_DOWN2, &CpictureCutDlg::OnBnClickedCut)
 	ON_BN_CLICKED(IDC_ZOOM_DOWN3, &CpictureCutDlg::OnBnShowSourcePicture)
+	ON_EN_CHANGE(IDC_EDIT1, &CpictureCutDlg::OnEnChangeEdit1)
+	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD1_UP, &CpictureCutDlg::OnBnClickedCannyThreshold1Up)
+	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD1_DOWN, &CpictureCutDlg::OnBnClickedCannyThreshold1Down)
+	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD2_UP, &CpictureCutDlg::OnBnClickedCannyThreshold2Up)
+	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD2_DOWN, &CpictureCutDlg::OnBnClickedCannyThreshold2Down)
+	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD1_UP5, &CpictureCutDlg::OnBnClickedCannyThreshold1Up5)
+	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD1_DOWN5, &CpictureCutDlg::OnBnClickedCannyThreshold1Down5)
+	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD2_UP5, &CpictureCutDlg::OnBnClickedCannyThreshold2Up5)
+	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD2_DOWN5, &CpictureCutDlg::OnBnClickedCannyThreshold2Down5)
+	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD1_UP10, &CpictureCutDlg::OnBnClickedCannyThreshold1Up10)
+	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD1_DOWN10, &CpictureCutDlg::OnBnClickedCannyThreshold1Down10)
+	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD2_UP10, &CpictureCutDlg::OnBnClickedCannyThreshold2Up10)
+	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD2_DOWN10, &CpictureCutDlg::OnBnClickedCannyThreshold2Down10)
+	ON_EN_CHANGE(IDC_THREADSHOLD1, &CpictureCutDlg::OnEnChangeThreadshold1)
+	ON_EN_CHANGE(IDC_THREADSHOLD2, &CpictureCutDlg::OnEnChangeThreadshold2)
+	ON_BN_CLICKED(IDC_ZOOM_DOWN4, &CpictureCutDlg::OnBnClickedOutline)
+	ON_BN_CLICKED(IDC_SAVE_CONTOURS, &CpictureCutDlg::OnBnClickedSaveContours)
+	ON_BN_CLICKED(IDC_READ_CONTOURS2, &CpictureCutDlg::OnBnClickedReadContours2)
+	ON_BN_CLICKED(IDC_SELECT, &CpictureCutDlg::OnBnClickedSelect)
+	ON_STN_DBLCLK(IDC_SHOW_PICTURE, &CpictureCutDlg::OnDblclkShowPicture)
+	ON_BN_CLICKED(IDC_RANGE_SELECT, &CpictureCutDlg::OnBnClickedRangeSelect)
+	ON_WM_KEYDOWN()
 END_MESSAGE_MAP()
 
 
@@ -115,8 +162,19 @@ BOOL CpictureCutDlg::OnInitDialog()
 
 	// TODO: 在此添加额外的初始化代码
 
-	showSourcePicture = TRUE;
+	//hBmp = AfxGetApp()->LoadIcon( IDR_MAINFRAME );
 
+	m_selectbtn.SetBitmap(::LoadBitmap(AfxGetInstanceHandle(),  MAKEINTRESOURCE(IDB_SELECT)));   
+	
+	m_rangeSelectbtn.SetBitmap(::LoadBitmap(AfxGetInstanceHandle(),  MAKEINTRESOURCE(IDB_RANGE_BITMAP))); 
+	
+	//m_selectbtn.SetBitmap(hBmp);
+
+	selectList.empty();
+
+	showSourcePicture = TRUE;
+	showOutline = FALSE;
+	runMode = MODE_RANGE_SELECT;
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -161,7 +219,7 @@ void CpictureCutDlg::OnPaint()
 		
 		if( !showImageMat.empty() )
 		{
-			showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat );
+			showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat , true );
 		}
 		CDialogEx::OnPaint();
 	}
@@ -178,7 +236,7 @@ HCURSOR CpictureCutDlg::OnQueryDragIcon()
 void OnMouseAction(int event,int x,int y,int flags,void *ustc);  //鼠标回调事件函数  
 void CpictureCutDlg::OnBnClickedStart2()
 {
-	CFileDialog dlg(TRUE,("png"),(".png"),OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,("PNG file(*.png)|*.png||"));
+	CFileDialog dlg(TRUE,("png"),(".png"),OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,("PNG file(*.png)|*.png|jpg file(*.jpg) |*.jpg|jpeg file(*.jpeg) |*.jpeg||"));
 
 	dlg.DoModal();	
 
@@ -232,83 +290,93 @@ void saveImage(byte * pTempData, int w, int h) {
 	fclose(fpFile);
 }
 
+//内存中的图像数据拷贝到屏幕上 
 
-void CpictureCutDlg::showMatImgToWnd( CWnd* pWnd, cv::Mat img )
+void CpictureCutDlg::showMatImgToWnd( CWnd* pWnd, cv::Mat img , bool forceUpdate )
 //void BitMatToWnd(CWnd* pWnd, cv::Mat img, CRect *Roi)
 {
 
 #if 1
+
 	if(img.empty()) 
 		return;
-
-	CRect drect; 
-	pWnd->GetClientRect(drect); //(drect); (&drect); 两种方式均可，竟然
-
+	
 	CClientDC dc(pWnd); 
-	HDC hDC =dc.GetSafeHdc();
-
-	//内存中的图像数据拷贝到屏幕上 
-	BYTE *bitBuffer = NULL; 
-	BITMAPINFO *bitMapinfo = NULL;
-
-	int ichannels =img.channels(); 
-	int depth = img.depth();
-	bool continous = img.isContinuous();
-	if( ichannels == 1) 
-	{ 
-		bitBuffer = new BYTE[40+4*256]; 
-	} 
-	else if( ichannels == 3) 
-	{ 
-		bitBuffer = new BYTE[sizeof(BITMAPINFO)]; 
-	} 
-	else 
-	{ 
-		return; 
-	}
+	hDC =dc.GetSafeHdc();
+	if( forceUpdate )
+	{
+		pWnd->GetClientRect(drect); //(drect); (&drect); 两种方式均可，竟然
 
 
-	if(bitBuffer == NULL) 
-	{ 
-		return; 
-	}
 
 
-	bitMapinfo = (BITMAPINFO *)bitBuffer; 
-	bitMapinfo->bmiHeader.biSize = sizeof(BITMAPINFOHEADER); 
-	bitMapinfo->bmiHeader.biHeight = -img.rows; //如果高度为正的，位图的起始位置在左下角。如果高度为负，起始位置在左上角。 
-	bitMapinfo->bmiHeader.biWidth = img.cols; 
-	bitMapinfo->bmiHeader.biPlanes = 1; // 目标设备的级别，必须为1 
-	bitMapinfo->bmiHeader.biBitCount = ichannels *8; // 每个像素所需的位数，必须是1(双色), 4(16色)，8(256色)或24(真彩色)之一 
-	bitMapinfo->bmiHeader.biCompression = BI_RGB; //位图压缩类型，必须是 0(不压缩), 1(BI_RLE8压缩类型)或2(BI_RLE4压缩类型)之一 
-	bitMapinfo->bmiHeader.biSizeImage = 0; // 位图的大小，以字节为单位 
-	bitMapinfo->bmiHeader.biXPelsPerMeter = 0; // 位图水平分辨率，每米像素数 
-	bitMapinfo->bmiHeader.biYPelsPerMeter = 0; // 位图垂直分辨率，每米像素数 
-	bitMapinfo->bmiHeader.biClrUsed = 0; // 位图实际使用的颜色表中的颜色数 
-	bitMapinfo->bmiHeader.biClrImportant = 0; // 位图显示过程中重要的颜色数
 
-	if(ichannels == 1) 
-	{ 
-		for(int i=0; i<256; i++) 
-		{ //颜色的取值范围 (0-255) 
-			bitMapinfo->bmiColors[i].rgbBlue =bitMapinfo->bmiColors[i].rgbGreen =bitMapinfo->bmiColors[i].rgbRed =(BYTE) i; 
+		int ichannels =img.channels(); 
+		int depth = img.depth();
+		if( bitBuffer == NULL )
+		{
+			bool continous = img.isContinuous();
+			if( ichannels == 1) 
+			{ 
+				bitBuffer = new BYTE[40+4*256]; 
+			} 
+			else if( ichannels == 3) 
+			{ 
+				bitBuffer = new BYTE[sizeof(BITMAPINFO)]; 
+			} 
+			else 
+			{ 
+				return; 
+			}
 		}
 
-		bitMapinfo->bmiHeader.biClrUsed = 256; // 位图实际使用的颜色表中的颜色数 
-	} 
-	SetStretchBltMode(hDC, COLORONCOLOR);
 
-	BYTE *showBuffer = new byte[ img.cols * img.rows * ichannels ]; 
+		if(bitBuffer == NULL) 
+		{ 
+			return; 
+		}
 
-	unsigned char * move = img.data;
-	for( int j = 0 ; j <  img.rows ; j++ )	
-	{
-		memcpy( showBuffer + j * img.cols * ichannels ,  move ,  img.cols * ichannels );
-		move += img.step;
+
+		bitMapinfo = (BITMAPINFO *)bitBuffer; 
+		bitMapinfo->bmiHeader.biSize = sizeof(BITMAPINFOHEADER); 
+		bitMapinfo->bmiHeader.biHeight = -img.rows; //如果高度为正的，位图的起始位置在左下角。如果高度为负，起始位置在左上角。 
+		bitMapinfo->bmiHeader.biWidth = img.cols; 
+		bitMapinfo->bmiHeader.biPlanes = 1; // 目标设备的级别，必须为1 
+		bitMapinfo->bmiHeader.biBitCount = ichannels *8; // 每个像素所需的位数，必须是1(双色), 4(16色)，8(256色)或24(真彩色)之一 
+		bitMapinfo->bmiHeader.biCompression = BI_RGB; //位图压缩类型，必须是 0(不压缩), 1(BI_RLE8压缩类型)或2(BI_RLE4压缩类型)之一 
+		bitMapinfo->bmiHeader.biSizeImage = 0; // 位图的大小，以字节为单位 
+		bitMapinfo->bmiHeader.biXPelsPerMeter = 0; // 位图水平分辨率，每米像素数 
+		bitMapinfo->bmiHeader.biYPelsPerMeter = 0; // 位图垂直分辨率，每米像素数 
+		bitMapinfo->bmiHeader.biClrUsed = 0; // 位图实际使用的颜色表中的颜色数 
+		bitMapinfo->bmiHeader.biClrImportant = 0; // 位图显示过程中重要的颜色数
+
+		if(ichannels == 1) 
+		{ 
+			for(int i=0; i<256; i++) 
+			{ //颜色的取值范围 (0-255) 
+				bitMapinfo->bmiColors[i].rgbBlue =bitMapinfo->bmiColors[i].rgbGreen =bitMapinfo->bmiColors[i].rgbRed =(BYTE) i; 
+			}
+
+			bitMapinfo->bmiHeader.biClrUsed = 256; // 位图实际使用的颜色表中的颜色数 
+		} 
+		SetStretchBltMode(hDC, COLORONCOLOR);
+
+		if( showBuffer == NULL )
+		{
+			showBuffer = new byte[ img.cols * img.rows * ichannels ]; 
+		}
+		unsigned char * move = img.data;
+		for( int j = 0 ; j <  img.rows ; j++ )	
+		{
+			memcpy( showBuffer + j * img.cols * ichannels ,  move ,  img.cols * ichannels );
+			move += img.step;
 		
-	}
-	//saveImage( showBuffer , img.cols * ichannels , img.rows);
+		}
+		//saveImage( showBuffer , img.cols * ichannels , img.rows);
 	
+		imgWidth = img.cols;
+		imgHeight = img.rows; //图像高度 
+	}
 	StretchDIBits(	hDC, 
 					0, 
 					0, 
@@ -316,16 +384,16 @@ void CpictureCutDlg::showMatImgToWnd( CWnd* pWnd, cv::Mat img )
 					drect.bottom, //显示窗口高度 
 					0, 
 					0, 
-					img.cols, //图像宽度 
-					img.rows, //图像高度 
+					imgWidth, //图像宽度 
+					imgHeight, //图像高度 
 					showBuffer, 
 					bitMapinfo, 
 					DIB_RGB_COLORS, 
 					SRCCOPY 
 	);
 
-	delete []showBuffer;
-	delete []bitBuffer;
+	//delete []showBuffer;
+	//delete []bitBuffer;
 
 #endif
 
@@ -419,17 +487,31 @@ void CpictureCutDlg::Update(  Point *pt1  , Point *pt2  )
 	vector<Vec4i> hierarchy;
 	RNG rng(0xFFFFFFFF);
 
-	if( !contours.empty() ) 
+	if ( showOutline )
 	{
-		for (int i = 0; i< contours.size(); i++)
+		if( !contours.empty() ) 
 		{
-			//随机颜色  
-			//CvScalar color = CV_RGB(255, 0, 0);
-			Scalar color = Scalar(rng.uniform(0, 255), rng.uniform(0, 255), rng.uniform(0, 255));
-			drawContours(duplicateMat, contours, i, color, 2, 8, hierarchy, 0, Point());
+			for (int i = 0; i< contours.size(); i++)
+			{
+				Scalar color;
+				int thickness = 2;
+				if( isConsHasBeenSelectd( i ) )
+				{
+					thickness = 5;
+					color = CV_RGB(255,255,255 );
+				}
+				else
+				{
+					color = Scalar(rng.uniform(0, 254), rng.uniform(0, 254), rng.uniform(0, 254));
+				}
+
+				//随机颜色  
+				//CvScalar color = CV_RGB(255, 0, 0);
+				
+				drawContours(duplicateMat, contours, i, color, thickness, 8, hierarchy, 0, Point());
+			}
 		}
 	}
-
 	subSrcImageMat = duplicateMat(roiRect ).clone();
 	subSrcImageMat.copyTo(showImageMat);
 	//cv::Mat tempShow = showImageMat.clone();
@@ -439,21 +521,67 @@ void CpictureCutDlg::Update(  Point *pt1  , Point *pt2  )
 	}
 	showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat );
 
+	//imshow("src" ,srcMat );
+	//imshow("showImageMat" ,showImageMat );
+}
+void CpictureCutDlg::deleteContous()
+{
+	vector< vector<Point> >  newContours;//srcMat上的连通域
+	for( int i = 0 ; i < this->contours.size();i++)
+	{
+		if(!isConsHasBeenSelectd ( i ) )
+		{
+			newContours.push_back( contours[i]);
+		}
+	}
+
+	contours.clear();
+	contours.insert( contours.end(), newContours.begin() , newContours.end() );
+
+	selectList.clear();
+
+	Update();
 }
 
 BOOL CpictureCutDlg::PreTranslateMessage(MSG* pMsg)
 {
+	if(pMsg->message == WM_KEYDOWN)
+	 {
+		if (pMsg->wParam == VK_DELETE )
+		{
+			deleteContous();
+		}
+	 }
 	 if (pMsg->message==WM_LBUTTONDOWN )
 	 {
-		  moveAction = true;
-		  rightButtonAction = false;
-		  if (pMsg->hwnd == GetDlgItem(IDC_SHOW_PICTURE)->m_hWnd)
-		  {
-			  start_xPos = GET_X_LPARAM(pMsg->lParam);  
-			  start_yPos = GET_Y_LPARAM(pMsg->lParam);  
+		 
+		if (pMsg->hwnd == GetDlgItem(IDC_SHOW_PICTURE)->m_hWnd)
+		{	
+			start_xPos = GET_X_LPARAM(pMsg->lParam);  
+			start_yPos = GET_Y_LPARAM(pMsg->lParam);  
 
-		   //SetDlgItemText(IDC_STATIC_SHOW1,"BUN1 DOWN");
-		  } 
+			//SetDlgItemText(IDC_STATIC_SHOW1,"BUN1 DOWN");
+
+			if( MODE_RANGE_SELECT == runMode )
+			{
+				moveAction = true;
+				rightButtonAction = false;				
+			}
+			else if( MODE_CONCOUR_SELECT == runMode )
+			{
+				cv::Point cvPoint;
+
+				cvPoint.x = start_xPos;
+				cvPoint.y = start_yPos;
+					
+				start_xPos = 0;
+				start_yPos = 0;
+				end_xPos = 0;
+				end_yPos = 0;
+				concourSelect( cvPoint );
+			}
+		} 
+		 
 	 }
 
 	  if (pMsg->message==WM_RBUTTONDOWN )
@@ -473,6 +601,19 @@ BOOL CpictureCutDlg::PreTranslateMessage(MSG* pMsg)
 	 {
 		rightButtonAction = false;
 		moveAction = false;
+		
+		cv::Point cvPointStart;
+		cvPointStart.x = start_xPos;
+		cvPointStart.y = start_yPos;
+
+		cv::Point cvPointEnd;
+		cvPointEnd.x = end_xPos;
+		cvPointEnd.y = end_yPos;
+		start_xPos = 0;
+		start_yPos = 0;
+		end_xPos = 0;
+		end_yPos = 0;
+		doMultConsSelect( cvPointStart , cvPointEnd );
 	 }
 	 
 	 if (pMsg->message==WM_LBUTTONUP)
@@ -624,19 +765,156 @@ BOOL CpictureCutDlg::PreTranslateMessage(MSG* pMsg)
 }
 
 
-
-
 void CpictureCutDlg::OnClickedShowPicture()
 {
+	
 
 }
 
 
+void CpictureCutDlg::doMultConsSelect(  cv::Point start , cv::Point end )
+{
+	CRect wndRect;
+	m_showPicture.GetClientRect(&wndRect);
+
+	Rect srcRect; Rect dstRect;  Point rePoint;
+	srcRect.x = 0 ;
+	srcRect.y = 0;
+	srcRect.width = wndRect.Width();
+	srcRect.height = wndRect.Height();
+
+	
+	dstRect.x = roiRect.x ;
+	dstRect.y = roiRect.y;
+	dstRect.width = roiRect.width;
+	dstRect.height = roiRect.height;
+
+	refect( srcRect , dstRect , start , &start );
+	refect( srcRect , dstRect , end , &end );
+
+	CvRect roiCutRect;
+	roiCutRect.x =  ( start.x < end.x )? start.x : end.x ;
+	roiCutRect.y = ( start.y < end.y )? start.y : end.y ;
+	roiCutRect.width =  ( start.x < end.x )? (end.x-start.x+1):((start.x-end.x+1));
+	roiCutRect.height = ( start.y < end.y )? (end.y-start.y+1):((start.y-end.y+1));
+
+	if(! GetKeyState(VK_CONTROL)<0 )
+	{// control 键被按下
+		selectList.clear();
+	}
+	
+	for( int i = 0 ; i < contours.size();i++ )
+	{
+		if(  contoursInRoi( contours[i] , roiCutRect ) )
+		{
+			selectList.push_back(i);
+		}
+	}
+
+	Update( );
+}
+void CpictureCutDlg::concourSelect(cv::Point cvPoint)
+{
+	//获得当前的做标的
+
+	//GetCursorPos(&point);
+
+	
+	//GetDlgItem(IDC_SHOW_PICTURE)->ScreenToClient( &point );
+
+	CRect wndRect;
+	m_showPicture.GetClientRect(&wndRect);
+
+	Rect srcRect; Rect dstRect;  Point rePoint;
+	srcRect.x = 0 ;
+	srcRect.y = 0;
+	srcRect.width = wndRect.Width();
+	srcRect.height = wndRect.Height();
+
+	
+	dstRect.x = roiRect.x ;
+	dstRect.y = roiRect.y;
+	dstRect.width = roiRect.width;
+	dstRect.height = roiRect.height;
+
+	refect( srcRect , dstRect , cvPoint , &cvPoint );
+
+	int which = clickFind( cvPoint );
+
+	
+	if( GetKeyState(VK_CONTROL)<0 )
+	{// control 键被按下
+
+	}
+	else
+	{
+		selectList.clear();
+	}
+
+	if( which != -1 )
+	{
+		selectList.push_back( which );
+	}
+
+
+
+	Update( );
+
+}
+
+
+bool contoursInRoi( vector<Point> contour , CvRect roiRect )
+{
+	for(vector<Point>::iterator it= contour.begin();it!=contour.end();it++)
+	{
+		if( ( (*it).x > roiRect.x ) && ( (*it).x < ( roiRect.x + roiRect.width ) ) && ( (*it).y > roiRect.y ) && ( (*it).y < ( roiRect.y + roiRect.height ) ))
+		{
+			// 在 roi 内
+		}
+		else
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+//删除掉所有在Rect内的contours
+void removeContoursInRoi( vector<vector<Point> >*contours , CvRect  transRect )
+{
+	for( vector<vector<Point> >::iterator it= contours->begin();it!=contours->end();)
+	{
+		if( contoursInRoi( *it , transRect ) )
+		{
+			 it = contours->erase(it);
+		}
+		else
+		{
+			it++;
+		}
+	}
+
+}
+
 void CpictureCutDlg::OnBnClickedCut()
 {
+	//先删除掉 roi内的所有 contours
+	removeContoursInRoi( &contours , roiRect );
+
 	//setRoi
+	Pca.SetMat( srcMat( roiRect).clone() );
+	Pca.setThreshold( this->cannyThreshold1 , this->cannyThreshold2 );
 	Pca.pickOutAllContours();
-	contours =  Pca.getAllContours();
+	vector<vector<Point> > newContours = Pca.getAllContours();
+	
+	
+	//contours 坐标转换
+	coordinateTranslate( &newContours , roiRect );
+
+	// 加入到 搜有的contours 中
+	contours.insert( contours.end(), newContours.begin() , newContours.end() );
+	
 	Update();
 }
 
@@ -647,3 +925,397 @@ void CpictureCutDlg::OnBnShowSourcePicture()
 
 	Update();
 }
+
+//显示轮廓
+void CpictureCutDlg::OnBnClickedOutline()
+{
+	if( ( showOutline == FALSE ) && ( contours.size() == 0 ))
+	{
+		OnBnClickedCut();
+	}
+
+	showOutline = !showOutline;
+
+	Update();
+}
+
+
+void CpictureCutDlg::OnEnChangeEdit1()
+{
+	// TODO:  如果该控件是 RICHEDIT 控件，它将不
+	// 发送此通知，除非重写 CDialogEx::OnInitDialog()
+	// 函数并调用 CRichEditCtrl().SetEventMask()，
+	// 同时将 ENM_CHANGE 标志“或”运算到掩码中。
+
+	// TODO:  在此添加控件通知处理程序代码
+}
+
+
+void CpictureCutDlg::OnBnClickedCannyThreshold1Up()
+{
+	cannyThreshold1 ++;
+	UpdateData(FALSE);
+	OnBnClickedCut();
+}
+
+void CpictureCutDlg::OnBnClickedCannyThreshold1Down()
+{
+	if( cannyThreshold1 > 1 )
+	{
+		cannyThreshold1 --;
+	}
+	UpdateData(FALSE);
+	OnBnClickedCut();
+}
+
+
+void CpictureCutDlg::OnBnClickedCannyThreshold2Up()
+{
+	cannyThreshold2++;
+	UpdateData(FALSE);
+	OnBnClickedCut();
+}
+
+
+void CpictureCutDlg::OnBnClickedCannyThreshold2Down()
+{
+	if( cannyThreshold2 > 1 )
+	{
+		cannyThreshold2--;
+	}
+	UpdateData(FALSE);
+	OnBnClickedCut();
+}
+
+
+
+void CpictureCutDlg::OnBnClickedCannyThreshold1Up5()
+{
+	cannyThreshold1 +=5;
+	UpdateData(FALSE);
+	OnBnClickedCut();
+}
+
+void CpictureCutDlg::OnBnClickedCannyThreshold1Down5()
+{
+	if( cannyThreshold1 > 5 )
+	{
+		cannyThreshold1 -=5;
+	}
+	UpdateData(FALSE);
+	OnBnClickedCut();
+}
+
+
+void CpictureCutDlg::OnBnClickedCannyThreshold2Up5()
+{
+	cannyThreshold2 += 5;
+	UpdateData(FALSE);
+	OnBnClickedCut();
+}
+
+
+void CpictureCutDlg::OnBnClickedCannyThreshold2Down5()
+{
+	if( cannyThreshold2 > 5 )
+	{
+		cannyThreshold2 -= 5;
+	}
+	UpdateData(FALSE);
+	OnBnClickedCut();
+}
+
+
+
+void CpictureCutDlg::OnBnClickedCannyThreshold1Up10()
+{
+	cannyThreshold1 +=10;
+	UpdateData(FALSE);
+	OnBnClickedCut();
+}
+
+void CpictureCutDlg::OnBnClickedCannyThreshold1Down10()
+{
+	if( cannyThreshold1 > 10 )
+	{
+		cannyThreshold1 -=10;
+	}
+	UpdateData(FALSE);
+	OnBnClickedCut();
+}
+
+
+void CpictureCutDlg::OnBnClickedCannyThreshold2Up10()
+{
+	cannyThreshold2 += 10;
+	UpdateData(FALSE);
+	OnBnClickedCut();
+}
+
+
+void CpictureCutDlg::OnBnClickedCannyThreshold2Down10()
+{
+	if( cannyThreshold2 > 10 )
+	{
+		cannyThreshold2 -= 10;
+	}
+	UpdateData(FALSE);
+	OnBnClickedCut();
+}
+
+
+void CpictureCutDlg::OnEnChangeThreadshold1()
+{
+	UpdateData(TRUE);
+	OnBnClickedCut();
+}
+
+
+void CpictureCutDlg::OnEnChangeThreadshold2()
+{
+	UpdateData(TRUE);
+	OnBnClickedCut();
+}
+
+void saveContours(vector<vector<Point>> contours, const char *filename)
+{
+	FILE* pFile;
+	pFile = fopen(filename, "wt");
+	if (!pFile)
+	{
+		return;
+	}
+	for (int i = 0; i < contours.size(); i++)
+	{
+		vector<Point> tempVec = contours[i];
+		for (int j = 0; j < tempVec.size(); j++)
+		{
+			fprintf(pFile, "%d %d ", tempVec[j].x, tempVec[j].y);
+		}
+		fprintf(pFile, "\n");
+	}
+	fclose(pFile);
+}
+
+
+void readContours(vector<vector<Point>> *contours, const char *filename)
+{
+	FILE* pFile;
+	int i;
+	char s[100], ch;
+	pFile = fopen(filename, "rt");
+	if (!pFile)
+	{
+		return;
+	}
+	bool readFile = TRUE;
+	while (readFile)
+	{
+
+	}
+	int row = 0;
+	while (fgets(s, 100, pFile) != NULL)
+		row++;
+	rewind(pFile);
+	int j = 0;
+	for (int i = 0; i < row; i++)
+	{
+		vector<Point> tempVec = (*contours)[i];
+		while (fscanf(pFile, "%d %d ", &(((*contours)[i])[j].x), &(((*contours)[i])[j].y)))
+		{
+			j++;
+		}
+		
+	}
+	fclose(pFile);
+}
+
+void saveContoursAndFile(vector<vector<Point>> contours, cv::Mat src, const char *filename)
+{
+	FILE* pFile;
+	pFile = fopen(filename, "wt");
+	if (!pFile)
+	{
+		return;
+	}
+	/*
+	for (int i = 0; i < contours.size(); i++)
+	{
+		vector<Point> tempVec = contours[i];
+		for (int j = 0; j < tempVec.size(); j++)
+		{
+			fprintf(pFile, "%d %d ", tempVec[j].x, tempVec[j].y);
+		}
+		fprintf(pFile, "\n");
+	}
+	*/
+	
+	fwrite(&contours, sizeof(vector<Point>), contours.size(), pFile);
+	fwrite(src.data, sizeof(uchar), src.rows * src.cols, pFile);
+	fclose(pFile);
+}
+
+
+ cv::Mat * readContoursAndFile(vector<vector<Point>> *contours, int contoursSize, int matSize, const char *filename)
+{
+	FILE* pFile;
+	pFile = fopen(filename, "rt");
+	if (!pFile)
+	{
+		return NULL;
+	}
+	fread(contours, sizeof(vector<Point>), contoursSize, pFile);
+	//fread(src, sizeof(uchar), matSize, pFile);
+	/*
+	int i;
+	char s[100], ch;
+	pFile = fopen(filename, "rt");
+	if (!pFile)
+	{
+		return;
+	}
+	bool readFile = TRUE;
+	while (readFile)
+	{
+
+	}
+	int row = 0;
+	while (fgets(s, 100, pFile) != NULL)
+		row++;
+	rewind(pFile);
+	int j = 0;
+	for (int i = 0; i < row; i++)
+	{
+		vector<Point> tempVec = (*contours)[i];
+		while (fscanf(pFile, "%d %d ", &(((*contours)[i])[j].x), &(((*contours)[i])[j].y)))
+		{
+			j++;
+		}
+		
+	}
+	*/
+
+	fclose(pFile);
+
+
+	return NULL;
+}
+
+void CpictureCutDlg::OnBnClickedSaveContours()
+{
+	CFileDialog dlg(FALSE,("con"),(".con"),OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,("cons file(*.con)|*.con|"));
+
+	dlg.DoModal();	
+
+	if( dlg.GetPathName().IsEmpty() )
+	{
+		std::cout << "read data error!" << std::endl;
+		return ;
+	}
+	else
+	{
+		cv::String cvFileName ;
+		cvFileName = dlg.GetPathName().GetBuffer(0);
+
+		saveContoursAndFile( this->contours , this->srcMat , cvFileName.c_str() );
+
+	}
+}
+
+
+void CpictureCutDlg::OnBnClickedReadContours2()
+{
+	CFileDialog dlg( TRUE,("con"),(".con"),OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,("cons file(*.con)|*.con|"));
+
+	dlg.DoModal();	
+
+	if( dlg.GetPathName().IsEmpty() )
+	{
+		std::cout << "read data error!" << std::endl;
+		return ;
+	}
+	else
+	{
+		cv::String cvFileName ;
+		cvFileName = dlg.GetPathName().GetBuffer(0);
+
+		//readContoursAndFile( &contours , &srcMat , cvFileName.c_str() );
+
+	}
+}
+
+//轮廓选择模式
+void CpictureCutDlg::OnBnClickedSelect()
+{
+	runMode = MODE_CONCOUR_SELECT;
+}
+
+
+bool CpictureCutDlg::isConsHasBeenSelectd( int which )
+{
+	bool ret = false;
+
+	for( int i = 0 ; i < selectList.size() ; i++ )
+	{
+		if( selectList[i] == which )
+		{
+			ret = true;
+			break;
+		}
+	}
+
+	return ret;
+}
+
+void CpictureCutDlg::removeConsSelectd( int which )
+{
+	vector<int>::iterator itor;    
+   
+	for(itor = selectList.begin();itor!=selectList.end();)  
+    {  
+        if( which ==*itor)  
+        {  
+			selectList.erase( itor );  
+			break;
+        }  
+        itor++;  
+    }  
+
+}
+
+//根据点找到最近的轮廓（ ）
+int CpictureCutDlg::clickFind(Point point)
+{
+	int ret = -1;
+
+	int isInitValue = 1;
+	int minInstance = 10;
+	for (int i = 0; i < contours.size(); i++)
+	{
+		vector<Point> tempVec = contours[i];
+		for (int j = 0; j < tempVec.size(); j++)
+		{
+			Point tempPoint = tempVec[j];
+			int temp = (tempPoint.x - point.x)*(tempPoint.x - point.x) + (tempPoint.y - point.y)*(tempPoint.y - point.y);
+			if (temp < minInstance)
+			{
+				ret = i;
+				return ret;
+			}
+		}
+
+	}
+	return ret;
+}
+
+void CpictureCutDlg::OnDblclkShowPicture()
+{
+	// TODO: 在此添加控件通知处理程序代码
+}
+
+
+void CpictureCutDlg::OnBnClickedRangeSelect()
+{
+	runMode = MODE_RANGE_SELECT;
+}
+
