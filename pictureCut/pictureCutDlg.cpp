@@ -475,50 +475,56 @@ int end_yPos = 0;
 bool rightButtonAction = false; 
 bool moveAction = false; // action 是否在进行中
 
-void CpictureCutDlg::Update(  Point *pt1  , Point *pt2  )
+void CpictureCutDlg::Update(  Point *pt1  , Point *pt2  , bool onlyRectRedraw)
 {
-	cv::Mat duplicateMat = srcMat.clone();
-
-	if( !showSourcePicture )
+	if( !onlyRectRedraw ) 
 	{
-		duplicateMat = Mat::zeros( srcMat.size(), CV_8UC3);
-	}
+		cv::Mat duplicateMat = srcMat.clone();
 
-	vector<Vec4i> hierarchy;
-	RNG rng(0xFFFFFFFF);
-
-	if ( showOutline )
-	{
-		if( !contours.empty() ) 
+		if( !showSourcePicture )
 		{
-			for (int i = 0; i< contours.size(); i++)
-			{
-				Scalar color;
-				int thickness = 2;
-				if( isConsHasBeenSelectd( i ) )
-				{
-					thickness = 5;
-					color = CV_RGB(255,255,255 );
-				}
-				else
-				{
-					color = Scalar(rng.uniform(0, 254), rng.uniform(0, 254), rng.uniform(0, 254));
-				}
+			duplicateMat = Mat::zeros( srcMat.size(), CV_8UC3);
+		}
 
-				//随机颜色  
-				//CvScalar color = CV_RGB(255, 0, 0);
+		vector<Vec4i> hierarchy;
+		RNG rng(0xFFFFFFFF);
+
+		if ( showOutline )
+		{
+			if( !contours.empty() ) 
+			{
+				for (int i = 0; i< contours.size(); i++)
+				{
+					Scalar color;
+					int thickness = 2;
+					if( isConsHasBeenSelectd( i ) )
+					{
+						thickness = 5;
+						color = CV_RGB(255,255,255 );
+					}
+					else
+					{
+						color = Scalar(rng.uniform(0, 254), rng.uniform(0, 254), rng.uniform(0, 254));
+					}
+
+					//随机颜色  
+					//CvScalar color = CV_RGB(255, 0, 0);
 				
-				drawContours(duplicateMat, contours, i, color, thickness, 8, hierarchy, 0, Point());
+					drawContours(duplicateMat, contours, i, color, thickness, 8, hierarchy, 0, Point());
+				}
 			}
 		}
+		subSrcImageMat = duplicateMat(roiRect ).clone();
 	}
-	subSrcImageMat = duplicateMat(roiRect ).clone();
 	subSrcImageMat.copyTo(showImageMat);
 	//cv::Mat tempShow = showImageMat.clone();
 	if( ( pt1 != NULL) && (pt2 != NULL) )
 	{
 		rectangle(showImageMat, *pt1,*pt2, Scalar(0, 0, 255), 3, 8, 0);
 	}
+	
+	//UpdateWindow( );
+
 	showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat );
 
 	//imshow("src" ,srcMat );
@@ -755,9 +761,9 @@ BOOL CpictureCutDlg::PreTranslateMessage(MSG* pMsg)
 			  refect( srcRect , dstRect , Point(end_xPos,end_yPos) , &endPoint );
 			  //rectangle(showImageMat, startPoint,endPoint, Scalar(0, 0, 255), 3, 8, 0);
 			  //showMatImgToWnd( GetDlgItem( IDC_SHOW_PICTURE  ) , showImageMat );
-			  Update( &startPoint ,&endPoint );
+			  Update( &startPoint ,&endPoint , true );
 
-			  TRACE( "x = %d  y = %d \n", end_xPos ,end_yPos );
+			  //TRACE( "x = %d  y = %d \n", end_xPos ,end_yPos );
 		  } 
 	 }
 
@@ -1130,7 +1136,7 @@ void readContours(vector<vector<Point>> *contours, const char *filename)
 	fclose(pFile);
 }
 
-void saveContoursAndFile(vector<vector<Point>> contours, cv::Mat src, const char *filename)
+void CpictureCutDlg::saveContoursAndFile(vector<vector<Point>> contours, cv::Mat *src, const char *filename)
 {
 	FILE* pFile;
 	pFile = fopen(filename, "wt");
@@ -1138,21 +1144,74 @@ void saveContoursAndFile(vector<vector<Point>> contours, cv::Mat src, const char
 	{
 		return;
 	}
-	/*
+	fprintf(pFile, "%d\n", contours.size());
 	for (int i = 0; i < contours.size(); i++)
 	{
 		vector<Point> tempVec = contours[i];
+		fprintf(pFile, "%d\n", tempVec.size());
 		for (int j = 0; j < tempVec.size(); j++)
 		{
 			fprintf(pFile, "%d %d ", tempVec[j].x, tempVec[j].y);
 		}
 		fprintf(pFile, "\n");
 	}
-	*/
 	
-	fwrite(&contours, sizeof(vector<Point>), contours.size(), pFile);
-	fwrite(src.data, sizeof(uchar), src.rows * src.cols, pFile);
+	
+	fprintf(pFile, "%d %d\n", src->rows, src->cols);
+	for (int i = 0; i < src->rows; i++)
+	{
+		for (int j = 0; j < src->cols; j++)
+		{	
+			Vec3b &s = src->at<Vec3b>(i, j);
+			fprintf(pFile, "%d %d %d ", s[0], s[1], s[2]);
+		}
+		fprintf(pFile, "\n");
+	}
+
+
+//	fwrite(&contours, sizeof(vector<Point>), contours.size(), pFile);
+//	fwrite(src.data, sizeof(uchar), src.rows * src.cols, pFile);
 	fclose(pFile);
+}
+
+
+cv::Mat * CpictureCutDlg::readContoursAndFile(vector<vector<Point>> *contours, const char *filename)
+{
+	cv::Mat src;
+	FILE* pFile;
+	pFile = fopen(filename, "rt");
+	if (!pFile)
+	{
+		return NULL;
+	}
+	int contoursSize;
+	fscanf(pFile, "%d", &contoursSize);
+	for (int i = 0; i < contoursSize; i++)
+	{
+		vector<Point> tempVec;
+		Point tempPoint;
+		int contourSize;
+		fscanf(pFile, "%d", &contourSize);
+		for (int j = 0; j < contourSize; j++)
+		{
+			fscanf(pFile, "%d %d ", &tempPoint.x, &tempPoint.y);
+			tempVec.push_back(tempPoint);
+		}
+		contours->push_back(tempVec);
+	}
+	int matRow, matCol;
+	fscanf(pFile, "%d %d ", &matRow, &matCol);
+	src.create(matRow, matCol, CV_8UC3);
+	for (int i = 0; i < src.rows; i++)
+	{
+		for (int j = 0; j < src.cols; j++)
+		{
+			Vec3b &s = src.at<Vec3b>(i, j);
+			fscanf(pFile, "%d %d %d ", &s[0], &s[1], &s[2]);
+		}
+	}
+	fclose(pFile);
+	return &src;
 }
 
 
@@ -1217,7 +1276,7 @@ void CpictureCutDlg::OnBnClickedSaveContours()
 		cv::String cvFileName ;
 		cvFileName = dlg.GetPathName().GetBuffer(0);
 
-		saveContoursAndFile( this->contours , this->srcMat , cvFileName.c_str() );
+		saveContoursAndFile( this->contours , &this->srcMat , cvFileName.c_str() );
 
 	}
 }

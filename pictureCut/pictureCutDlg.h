@@ -82,7 +82,7 @@ public:
 
 private:
 	//void showMatImgToWnd(CWnd* pWnd, const cv::Mat& img);
-	void Update( Point *pt1 = NULL, Point *pt2 = NULL );
+	void Update( Point *pt1 = NULL, Point *pt2 = NULL ,bool onlyRectRedraw = false );
 	void showMatImgToWnd( CWnd* pWnd, cv::Mat img ,bool forceUpdate = true );
 public:
 	afx_msg void OnBnClickedZoomUp();
@@ -101,6 +101,8 @@ public:
 	void concourSelect( cv::Point cvPoint );
 	void doMultConsSelect( cv::Point start , cv::Point end );
 	void deleteContous();
+	void saveContoursAndFile(vector<vector<Point>> contours, cv::Mat *src, const char *filename);
+	cv::Mat * readContoursAndFile(vector<vector<Point>> *contours, const char *filename);
 	// cvCanny threshold1
 	UINT cannyThreshold1;
 	// cvCanny threshold2
