@@ -122,7 +122,7 @@ BEGIN_MESSAGE_MAP(CpictureCutDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_ZOOM_DOWN4, &CpictureCutDlg::OnBnClickedOutline)
 	ON_BN_CLICKED(IDC_SAVE_CONTOURS, &CpictureCutDlg::OnBnClickedSaveContours)
 	ON_BN_CLICKED(IDC_READ_CONTOURS2, &CpictureCutDlg::OnBnClickedReadContours2)
-	ON_BN_CLICKED(IDC_SELECT, &CpictureCutDlg::OnBnClickedSelect)
+	ON_BN_CLICKED(IDC_SELECT, &CpictureCutDlg::OnBnCutOut)
 	ON_STN_DBLCLK(IDC_SHOW_PICTURE, &CpictureCutDlg::OnDblclkShowPicture)
 	ON_BN_CLICKED(IDC_RANGE_SELECT, &CpictureCutDlg::OnBnClickedRangeSelect)
 	ON_WM_KEYDOWN()
@@ -173,8 +173,9 @@ BOOL CpictureCutDlg::OnInitDialog()
 	selectList.empty();
 
 	showSourcePicture = TRUE;
+	dupAndZeorInitFlag = false;
 	showOutline = FALSE;
-	runMode = MODE_RANGE_SELECT;
+	cutOutFlag = false;
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -258,7 +259,13 @@ void CpictureCutDlg::OnBnClickedStart2()
 		roiRect.height = srcMat.rows;
 		roiRect.width = srcMat.cols;
 
-
+		{
+			dupAndZeorInitFlag = true;
+			//cvtColor( srcMat , duplicateSrcMat,CV_BGR2BGRA );
+			duplicateSrcMat = srcMat.clone();
+			backgroundMat = Mat::zeros( srcMat.size(), CV_8UC3); // 初始化背景色为黑色
+			alphaMat = Mat( srcMat.size(),CV_8UC3,Scalar(1,1,1)); // 初始化 alpha矩阵
+		}
 
 		
 		Update();
@@ -321,6 +328,10 @@ void CpictureCutDlg::showMatImgToWnd( CWnd* pWnd, cv::Mat img , bool forceUpdate
 				bitBuffer = new BYTE[40+4*256]; 
 			} 
 			else if( ichannels == 3) 
+			{ 
+				bitBuffer = new BYTE[sizeof(BITMAPINFO)]; 
+			} 
+			else if( ichannels == 4) 
 			{ 
 				bitBuffer = new BYTE[sizeof(BITMAPINFO)]; 
 			} 
@@ -475,15 +486,25 @@ int end_yPos = 0;
 bool rightButtonAction = false; 
 bool moveAction = false; // action 是否在进行中
 
-void CpictureCutDlg::Update(  Point *pt1  , Point *pt2  , bool onlyRectRedraw)
+
+
+void CpictureCutDlg::Update(  Point *pt1  , Point *pt2  , bool onlyRectRedraw )
 {
+	
+	cv::Mat duplicateMat;
+
 	if( !onlyRectRedraw ) 
 	{
-		cv::Mat duplicateMat = srcMat.clone();
+		
+		duplicateMat = duplicateSrcMat.clone();
+		//cv::Mat duplicateMat = srcMat.clone();
 
 		if( !showSourcePicture )
 		{
-			duplicateMat = Mat::zeros( srcMat.size(), CV_8UC3);
+			duplicateMat = backgroundMat.clone();
+		}
+		else
+		{
 		}
 
 		vector<Vec4i> hierarchy;
@@ -500,22 +521,39 @@ void CpictureCutDlg::Update(  Point *pt1  , Point *pt2  , bool onlyRectRedraw)
 					if( isConsHasBeenSelectd( i ) )
 					{
 						thickness = 5;
-						color = CV_RGB(255,255,255 );
+						color = CV_RGB(255,0,0 );
 					}
 					else
 					{
-						color = Scalar(rng.uniform(0, 254), rng.uniform(0, 254), rng.uniform(0, 254));
+						color = Scalar(rng.uniform(1, 254), rng.uniform(1, 254), rng.uniform(1, 254));
 					}
 
 					//随机颜色  
 					//CvScalar color = CV_RGB(255, 0, 0);
-				
+;
 					drawContours(duplicateMat, contours, i, color, thickness, 8, hierarchy, 0, Point());
+
+					//test
+					
 				}
 			}
 		}
+
+
 		subSrcImageMat = duplicateMat(roiRect ).clone();
+		/* 透明度处理 */
+		{
+			cv::Mat alphaRoiMat = alphaMat(roiRect).clone();
+			subSrcImageMat = subSrcImageMat.mul( alphaRoiMat );
+			cv::Mat backgroundMatRoi = backgroundMat(roiRect).clone() .mul( Mat(alphaRoiMat.size(),CV_8UC3,Scalar(1,1,1) ) - alphaRoiMat );
+			subSrcImageMat = subSrcImageMat + backgroundMatRoi;
+
+			
+		}
+	
 	}
+
+
 	subSrcImageMat.copyTo(showImageMat);
 	//cv::Mat tempShow = showImageMat.clone();
 	if( ( pt1 != NULL) && (pt2 != NULL) )
@@ -530,6 +568,7 @@ void CpictureCutDlg::Update(  Point *pt1  , Point *pt2  , bool onlyRectRedraw)
 	//imshow("src" ,srcMat );
 	//imshow("showImageMat" ,showImageMat );
 }
+
 void CpictureCutDlg::deleteContous()
 {
 	vector< vector<Point> >  newContours;//srcMat上的连通域
@@ -568,24 +607,8 @@ BOOL CpictureCutDlg::PreTranslateMessage(MSG* pMsg)
 
 			//SetDlgItemText(IDC_STATIC_SHOW1,"BUN1 DOWN");
 
-			if( MODE_RANGE_SELECT == runMode )
-			{
-				moveAction = true;
-				rightButtonAction = false;				
-			}
-			else if( MODE_CONCOUR_SELECT == runMode )
-			{
-				cv::Point cvPoint;
-
-				cvPoint.x = start_xPos;
-				cvPoint.y = start_yPos;
-					
-				start_xPos = 0;
-				start_yPos = 0;
-				end_xPos = 0;
-				end_yPos = 0;
-				concourSelect( cvPoint );
-			}
+			moveAction = true;
+			rightButtonAction = false;		
 		} 
 		 
 	 }
@@ -625,11 +648,22 @@ BOOL CpictureCutDlg::PreTranslateMessage(MSG* pMsg)
 	 if (pMsg->message==WM_LBUTTONUP)
 	 {
 		 moveAction = false;
+		 end_xPos = GET_X_LPARAM(pMsg->lParam);  
+		 end_yPos = GET_Y_LPARAM(pMsg->lParam);  
 		 //有down先发生了
 		if( ( abs( end_xPos - start_xPos ) < 10 ) || ( abs( end_yPos - start_yPos ) < 10 ) )
-		{	//移动太小
-			start_xPos = 0;
-			start_yPos = 0;
+		{	//移动太小 // 作为点击操作来处理
+				cv::Point cvPoint;
+
+				cvPoint.x = start_xPos;
+				cvPoint.y = start_yPos;
+					
+				start_xPos = 0;
+				start_yPos = 0;
+				end_xPos = 0;
+				end_yPos = 0;
+				concourSelect( cvPoint );
+
 			return CDialog::PreTranslateMessage( pMsg );
 		}
 
@@ -804,7 +838,8 @@ void CpictureCutDlg::doMultConsSelect(  cv::Point start , cv::Point end )
 	roiCutRect.width =  ( start.x < end.x )? (end.x-start.x+1):((start.x-end.x+1));
 	roiCutRect.height = ( start.y < end.y )? (end.y-start.y+1):((start.y-end.y+1));
 
-	if(! GetKeyState(VK_CONTROL)<0 )
+	short keyState = GetKeyState(VK_CONTROL);
+	if(! ( keyState <0 ) )
 	{// control 键被按下
 		selectList.clear();
 	}
@@ -920,6 +955,7 @@ void CpictureCutDlg::OnBnClickedCut()
 
 	// 加入到 搜有的contours 中
 	contours.insert( contours.end(), newContours.begin() , newContours.end() );
+	
 	
 	Update();
 }
@@ -1303,10 +1339,161 @@ void CpictureCutDlg::OnBnClickedReadContours2()
 	}
 }
 
-//轮廓选择模式
-void CpictureCutDlg::OnBnClickedSelect()
+void CpictureCutDlg::contourAlphaMask( vector<Point> contour )
 {
-	runMode = MODE_CONCOUR_SELECT;
+	int minX = 999999999;
+	int maxX = 0;
+
+	map<int ,vector<int> > xMap;  // 按x作为Key放进map
+	map<int ,vector<int> > yMap;  // 按y作为Key放进map
+
+	
+	for( int i = 0 ; i < contour.size() ;i++ )
+	{
+		minX = ( contour[i].x < minX ) ? contour[i].x : minX;
+		maxX = ( contour[i].x > maxX ) ? contour[i].x : maxX;
+		vector<int> yVector;
+		
+		if( xMap.count( contour[i].x )>0 )
+		{
+			
+		}
+		else
+		{
+			xMap.insert( make_pair(contour[i].x , yVector ));
+		}
+		xMap[contour[i].x].push_back( contour[i].y );
+
+		vector<int> xVector;
+		
+		if( yMap.count( contour[i].y )>0 )
+		{
+			
+		}
+		else
+		{
+			yMap.insert( make_pair(contour[i].y , xVector ));
+		}
+		yMap[contour[i].y].push_back( contour[i].x );
+	}
+
+	for( int i = minX ; i <= maxX ; i++ )
+	{
+		
+		vector<int> yVector;
+		
+		if( xMap.count( i )>0 )
+		{
+			yVector = xMap[i];
+		}
+
+		//yVector 排序
+		std::sort(  yVector.begin() , yVector.end() );
+		int yMin = yVector[0];
+		int yMax = yVector[yVector.size()-1];
+		
+		for( int m = 0 ; m < yVector.size() ; )
+		{
+			int start = yVector[m];
+			bool inFlag = true;
+			m++;	// 跳过开始的点
+			int end = start;
+			for( int k = m ; k < yVector.size() ; k++ )
+			{
+				if( yVector[k] == end + 1 )
+				{
+					end = yVector[k];
+					m = k+1;
+				}
+				else
+				{
+					// 找到了另一边的开始位置
+
+					/* 刨除掉中间点不在轮廓内的情况 */
+					//yVector 排序
+					vector<int> xVector;
+					int contextValue = 0;
+					if( yMap.count( yVector[k]+1 )>0 )
+					{
+						contextValue = yVector[k]+1;
+						xVector = yMap[contextValue];
+					}
+				
+					std::sort(  xVector.begin() , xVector.end() );
+
+					if( ( xVector.size() > 0 ) && ( ( contextValue > xVector[0] ) &&  ( contextValue < xVector[xVector.size() -1 ] ) )  )
+					{
+						end = yVector[k];
+						m = k+1;
+					}
+					else
+					{
+						//已经没有点在轮廓内了，do nothing
+					}
+					
+					break; 
+				}
+			}
+
+	
+			
+			//确定下一个点是否是在线上的相邻点
+			int tryNextEnd = (  m  < yVector.size() ) ?  yVector[m] : yVector[ yVector.size()-1];
+			while( ( tryNextEnd ==  ( end +1 ) ) && (  m  < yVector.size() ))
+			{
+				m++;
+				end = tryNextEnd;
+				tryNextEnd = ((  m  )< yVector.size() ) ?  yVector[m] : yVector[ yVector.size()-1];
+			}
+
+			for( int j = start ; j <= end ; j ++ )
+			{
+				Vec3b &s = alphaMat.at<Vec3b>(j, i );
+
+				s[0] = 1;
+				s[1] = 1;
+				s[2] = 1;
+			}
+		}
+		
+
+	}
+
+
+}
+
+//抠图
+void CpictureCutDlg::OnBnCutOut()
+{
+	
+	cutOutFlag = !cutOutFlag;
+
+	
+	if( cutOutFlag )
+	{// 全不可见
+		vector<Vec4i> hierarchy;
+		alphaMat = cv::Mat::zeros( alphaMat.size() , CV_8UC3 );
+		if( !contours.empty() ) 
+		{
+			for (int i = 0; i< contours.size(); i++)
+			{
+				Scalar color;
+				color = CV_RGB(1,1,1 );
+;
+				drawContours(alphaMat, contours, i, color, -1, 8, hierarchy, 0, Point() );
+					
+			}
+		}
+
+	}
+	else
+	{
+		alphaMat = Mat(alphaMat.size(),CV_8UC3,Scalar(1,1,1) );
+	}
+
+	
+	Update();
+
 }
 
 
@@ -1375,6 +1562,6 @@ void CpictureCutDlg::OnDblclkShowPicture()
 
 void CpictureCutDlg::OnBnClickedRangeSelect()
 {
-	runMode = MODE_RANGE_SELECT;
+	
 }
 

@@ -17,11 +17,7 @@ typedef struct cons
 	vector<Point>  pointSet;
 }CONTOURS_t;
 
-typedef enum mode
-{
-	MODE_RANGE_SELECT,
-	MODE_CONCOUR_SELECT,
-}MODE_e;
+
 
 //CONTOURS_t contoursArray[1024];
 
@@ -42,6 +38,10 @@ public:
 // 实现
 private:
 	cv::Mat srcMat;
+	bool dupAndZeorInitFlag ;
+	cv::Mat duplicateSrcMat;
+	cv::Mat backgroundMat; // 背景色
+	cv::Mat alphaMat; // A 矩阵 ， 0 透明， 1，不透明
 	cv::Mat subSrcImageMat; // 缩放或指定rect的图像
 
 	cv::Mat showImageMat; // 用于输出显示的mat ，在srcMat上叠加自定义指示
@@ -53,7 +53,6 @@ private:
 
 	PictureCutAlgorithm Pca;
 
-	MODE_e runMode ;
 	//显示原图
 	BOOL showSourcePicture;
 	//显示轮廓
@@ -68,6 +67,7 @@ private:
 	int imgHeight ;
 	HDC hDC;
 
+	bool cutOutFlag;
 protected:
 	HICON m_hIcon;
 
@@ -103,6 +103,7 @@ public:
 	void deleteContous();
 	void saveContoursAndFile(vector<vector<Point>> contours, cv::Mat *src, const char *filename);
 	cv::Mat * readContoursAndFile(vector<vector<Point>> *contours, const char *filename);
+	void contourAlphaMask( vector<Point> contour );
 	// cvCanny threshold1
 	UINT cannyThreshold1;
 	// cvCanny threshold2
@@ -126,7 +127,7 @@ public:
 	afx_msg void OnBnClickedSaveContours();
 	afx_msg void OnBnClickedReadContours2();
 	CButton m_selectbtn;
-	afx_msg void OnBnClickedSelect();
+	afx_msg void OnBnCutOut();
 	afx_msg void OnDblclkShowPicture();
 	afx_msg void OnBnClickedRangeSelect();
 	CButton m_rangeSelectbtn;
