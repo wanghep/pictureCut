@@ -195,6 +195,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="algorithm\PictureCutAlgorithm.h" />
+    <ClInclude Include="FileStream.hpp" />
     <ClInclude Include="pictureCut.h" />
     <ClInclude Include="pictureCutDlg.h" />
     <ClInclude Include="Resource.h" />

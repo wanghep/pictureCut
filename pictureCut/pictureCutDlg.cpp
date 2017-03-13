@@ -16,7 +16,9 @@ using namespace std;
 #define new DEBUG_NEW
 #endif
 
+#include <iostream>
 
+#include "FileStream.hpp"
 
 // 用于应用程序“关于”菜单项的 CAboutDlg 对话框
 void coordinateTranslate( vector<vector<Point> >*contours , CvRect  transRect );
@@ -67,6 +69,7 @@ CpictureCutDlg::CpictureCutDlg(CWnd* pParent /*=NULL*/)
 	cannyThreshold2 = 255;
 	showBuffer = NULL;
 	bitBuffer = NULL;
+	WorkMode = MODE_NULL;
 }
 
 CpictureCutDlg::~CpictureCutDlg()
@@ -89,17 +92,17 @@ void CpictureCutDlg::DoDataExchange(CDataExchange* pDX)
 	DDV_MinMaxUInt(pDX, cannyThreshold1, 1, 10000);
 	DDX_Text(pDX, IDC_THREADSHOLD2, cannyThreshold2);
 	DDV_MinMaxUInt(pDX, cannyThreshold2, 1, 10000);
-	DDX_Control(pDX, IDC_SELECT, m_selectbtn);
-	DDX_Control(pDX, IDC_RANGE_SELECT, m_rangeSelectbtn);
+	DDX_Control(pDX, IDC_CLIP_IMAGE, m_selectbtn);
 }
 
 BEGIN_MESSAGE_MAP(CpictureCutDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
+	ON_WM_SETCURSOR()
 	ON_WM_QUERYDRAGICON()
 	ON_BN_CLICKED(IDC_START2, &CpictureCutDlg::OnBnClickedStart2)
-	ON_BN_CLICKED(IDC_ZOOM_UP, &CpictureCutDlg::OnBnClickedZoomUp)
-	ON_BN_CLICKED(IDC_ZOOM_DOWN, &CpictureCutDlg::OnBnClickedZoomDown)
+	ON_BN_CLICKED(IDC_CON_PEN, &CpictureCutDlg::OnBnClickedConPen)
+	ON_BN_CLICKED(IDC_CON_RUBBER, &CpictureCutDlg::OnBnClickedRubble)
 	ON_NOTIFY(NM_THEMECHANGED, IDC_SHOW_PICTURE, &CpictureCutDlg::OnThemechangedShowPicture )
 	ON_STN_CLICKED(IDC_SHOW_PICTURE, &CpictureCutDlg::OnClickedShowPicture)
 	ON_BN_CLICKED(IDC_ZOOM_DOWN2, &CpictureCutDlg::OnBnClickedCut)
@@ -119,13 +122,19 @@ BEGIN_MESSAGE_MAP(CpictureCutDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_CANNY_THRESHHOLD2_DOWN10, &CpictureCutDlg::OnBnClickedCannyThreshold2Down10)
 	ON_EN_CHANGE(IDC_THREADSHOLD1, &CpictureCutDlg::OnEnChangeThreadshold1)
 	ON_EN_CHANGE(IDC_THREADSHOLD2, &CpictureCutDlg::OnEnChangeThreadshold2)
-	ON_BN_CLICKED(IDC_ZOOM_DOWN4, &CpictureCutDlg::OnBnClickedOutline)
+	ON_BN_CLICKED(IDC_SHOW_CLICK_OUT_LIE, &CpictureCutDlg::OnBnClickedOutline)
 	ON_BN_CLICKED(IDC_SAVE_CONTOURS, &CpictureCutDlg::OnBnClickedSaveContours)
 	ON_BN_CLICKED(IDC_READ_CONTOURS2, &CpictureCutDlg::OnBnClickedReadContours2)
-	ON_BN_CLICKED(IDC_SELECT, &CpictureCutDlg::OnBnCutOut)
+	ON_BN_CLICKED(IDC_CLIP_IMAGE, &CpictureCutDlg::OnBnCutOut)
 	ON_STN_DBLCLK(IDC_SHOW_PICTURE, &CpictureCutDlg::OnDblclkShowPicture)
-	ON_BN_CLICKED(IDC_RANGE_SELECT, &CpictureCutDlg::OnBnClickedRangeSelect)
 	ON_WM_KEYDOWN()
+	ON_BN_CLICKED(IDC_BIAODING, &CpictureCutDlg::OnBnClickedBiaoding)
+	ON_BN_CLICKED(IDC_SAVE_CAL_RESULT, &CpictureCutDlg::OnBnClickedSaveCalResult)
+	ON_BN_CLICKED(IDC_SHOW_BIAODING_RESULT, &CpictureCutDlg::OnBnClickedShowBiaodingResult)
+	ON_BN_CLICKED(IDC_MERGE_AREA, &CpictureCutDlg::OnBnClickedMergeArea)
+	ON_BN_CLICKED(CONTOUR_MEGER, &CpictureCutDlg::OnBnClickedMeger)
+	ON_BN_CLICKED(CONTOUR_FIX, &CpictureCutDlg::OnBnClickedFix)
+	ON_BN_CLICKED(IDC_SAVE_LAYOUT_FILE, &CpictureCutDlg::OnBnClickedSaveLayoutFile)
 END_MESSAGE_MAP()
 
 
@@ -166,7 +175,6 @@ BOOL CpictureCutDlg::OnInitDialog()
 
 	m_selectbtn.SetBitmap(::LoadBitmap(AfxGetInstanceHandle(),  MAKEINTRESOURCE(IDB_SELECT)));   
 	
-	m_rangeSelectbtn.SetBitmap(::LoadBitmap(AfxGetInstanceHandle(),  MAKEINTRESOURCE(IDB_RANGE_BITMAP))); 
 	
 	//m_selectbtn.SetBitmap(hBmp);
 
@@ -175,7 +183,8 @@ BOOL CpictureCutDlg::OnInitDialog()
 	showSourcePicture = TRUE;
 	dupAndZeorInitFlag = false;
 	showOutline = FALSE;
-	cutOutFlag = false;
+	showClipImageFlag = true;
+	calibrationFlag = false;
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -254,6 +263,8 @@ void CpictureCutDlg::OnBnClickedStart2()
 		cvFileName = dlg.GetPathName().GetBuffer(0);
 		srcMat = imread(cvFileName);
 
+		//试着读取一下预处理的图片，如果没有预处理的图片还是要用原图片
+		cv::Mat preHandleMat = imread(cvFileName+".prehandle.png");
 		roiRect.x = 0;
 		roiRect.y = 0;
 		roiRect.height = srcMat.rows;
@@ -262,8 +273,18 @@ void CpictureCutDlg::OnBnClickedStart2()
 		{
 			dupAndZeorInitFlag = true;
 			//cvtColor( srcMat , duplicateSrcMat,CV_BGR2BGRA );
-			duplicateSrcMat = srcMat.clone();
+			if(preHandleMat.rows != 0 )
+			{//读取预处理文件成功
+				duplicateSrcMat = preHandleMat.clone();
+			}
+			else
+			{
+				duplicateSrcMat = srcMat.clone();
+			
+			}
+
 			backgroundMat = Mat::zeros( srcMat.size(), CV_8UC3); // 初始化背景色为黑色
+
 			alphaMat = Mat( srcMat.size(),CV_8UC3,Scalar(1,1,1)); // 初始化 alpha矩阵
 		}
 
@@ -412,60 +433,20 @@ void CpictureCutDlg::showMatImgToWnd( CWnd* pWnd, cv::Mat img , bool forceUpdate
 
 
 
-//放大图片
-void CpictureCutDlg::OnBnClickedZoomUp()
+//轮廓笔，用于在轮廓上添加点
+void CpictureCutDlg::OnBnClickedConPen()
 {
-	// TODO: 在此添加控件通知处理程序代码
-
-	roiRect.width /= 2;
-	roiRect.height /= 2;
-
-	Update();
-
-	/*
-	namedWindow("loveLena", CV_WINDOW_AUTOSIZE); 
-    //显示图片。如果你不介意窗口大小可变，可以直接注释掉上一句。因为imshow可以直接创建窗口
-    imshow("loveLena", showImageMat);
-    waitKey(); //等待按键
-	*/
+	
+	WorkMode = MODE_PEN;
+	 //一、设置此窗口中特定控件的光标  
+  
  
 }
 
-
-void CpictureCutDlg::OnBnClickedZoomDown()
+//轮廓橡皮，用于删除轮廓上的点
+void CpictureCutDlg::OnBnClickedRubble()
 {
-	roiRect.x -= (roiRect.width/2);
-	roiRect.y -= (roiRect.height/2);
-	
-	roiRect.width *= 2;
-	roiRect.height *= 2;
-
-	if( roiRect.x  < 0 ) 
-	{
-		roiRect.x = 0;
-	}
-
-	if( roiRect.y  < 0 ) 
-	{
-		roiRect.y = 0;
-	}
-	
-	if( roiRect.width > ( srcMat.cols -roiRect.x ) )
-	{
-		roiRect.width = srcMat.cols -roiRect.x ;
-
-	}
-	if( roiRect.height > ( srcMat.rows  -roiRect.y ))
-	{
-		roiRect.height =  srcMat.rows  -roiRect.y;
-	}
-
-	// 变成4的倍数
-	roiRect.width >>= 2;  
-	roiRect.width <<= 2; 
-
-	Update();
-	//imshow("view", showImageMat);
+	WorkMode = MODE_RUBBER;
 }
 
 
@@ -477,6 +458,74 @@ void CpictureCutDlg::OnThemechangedShowPicture(NMHDR *pNMHDR, LRESULT *pResult)
 	*pResult = 0;
 }
 
+void  drawDashRect(cv::Mat& img,int linelength,int dashlength,CvRect* blob,CvScalar color,int thickness)  
+{  
+    int w=cvRound(blob->width);//width  
+    int h=cvRound(blob->height);//height  
+  
+  
+    int tl_x=cvRound(blob->x);//top left x  
+    int tl_y=cvRound(blob->y);//top  left y  
+  
+  
+    int totallength=dashlength+linelength;  
+    int nCountX=w/totallength;//  
+    int nCountY=h/totallength;//  
+  
+  
+    CvPoint start,end;//start and end point of each dash  
+  
+  
+    //draw the horizontal lines  
+    start.y=tl_y;  
+    start.x=tl_x;  
+  
+  
+    end.x=tl_x;  
+    end.y=tl_y;  
+  
+  
+    for (int i=0;i<nCountX;i++)  
+    {  
+		end.x=tl_x+(i+1)*totallength-dashlength;//draw top dash line  
+		end.y=tl_y;  
+		start.x=tl_x+i*totallength;  
+		start.y=tl_y;  
+		line( img ,start,end,color,thickness);     
+    }  
+	for (int i=0;i<nCountX;i++)  
+	{    
+		start.x=tl_x+i*totallength;  
+		start.y=tl_y+h;  
+		end.x=tl_x+(i+1)*totallength-dashlength;//draw bottom dash line  
+		end.y=tl_y+h;  
+		line(img,start,end,color,thickness);       
+	}  
+  
+  
+	for (int i=0;i<nCountY;i++)  
+	{    
+		start.x=tl_x;  
+		start.y=tl_y+i*totallength;  
+		end.y=tl_y+(i+1)*totallength-dashlength;//draw left dash line  
+		end.x=tl_x;  
+		line(img,start,end,color,thickness);       
+	}  
+  
+  
+	for (int i=0;i<nCountY;i++)  
+	{    
+		start.x=tl_x+w;  
+		start.y=tl_y+i*totallength;  
+		end.y=tl_y+(i+1)*totallength-dashlength;//draw right dash line  
+		end.x=tl_x+w;  
+		line(img,start,end,color,thickness);       
+	}  
+  
+  
+}  
+
+
 int start_xPos = 0;
 int start_yPos = 0;
 
@@ -487,6 +536,22 @@ bool rightButtonAction = false;
 bool moveAction = false; // action 是否在进行中
 
 
+bool CpictureCutDlg::rectInSelectSplitImageRects( CvRect r )
+{
+	
+	for( int i = 0 ; i < selectSplitImageRects.size() ; i++ )
+	{
+			
+		CvRect  rect = selectSplitImageRects.at( i );
+			
+		if(  ( rect.x == r.x ) && ( rect.y == r.y )  )
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
 
 void CpictureCutDlg::Update(  Point *pt1  , Point *pt2  , bool onlyRectRedraw )
 {
@@ -537,23 +602,65 @@ void CpictureCutDlg::Update(  Point *pt1  , Point *pt2  , bool onlyRectRedraw )
 					
 				}
 			}
+			
 		}
-
 
 		subSrcImageMat = duplicateMat(roiRect ).clone();
 		/* 透明度处理 */
+		if( showClipImageFlag )
 		{
 			cv::Mat alphaRoiMat = alphaMat(roiRect).clone();
 			subSrcImageMat = subSrcImageMat.mul( alphaRoiMat );
 			cv::Mat backgroundMatRoi = backgroundMat(roiRect).clone() .mul( Mat(alphaRoiMat.size(),CV_8UC3,Scalar(1,1,1) ) - alphaRoiMat );
 			subSrcImageMat = subSrcImageMat + backgroundMatRoi;
+			
+		}
+			
+		if( calibrationFlag )
+		{	//画出标定信息
+			//蓝色虚线
 
+			//imshow( "show1" , subSrcImageMat );
+			//waitKey();
+
+			for( int i = 0 ; i < splitImageRects.size() ; i++ )
+			{
+				CvRect rect = splitImageRects[i];
+			
+				rect.x -= roiRect.x;
+				rect.y -= roiRect.y;
+
+				if( ( rect.x < 0 ) || (rect.y < 0 ) )
+				{
+					continue;
+				}
+				int thickness = 1;
+				CvScalar color = CV_RGB(0XCD,0X5F,0X3A);
+				if( rectInSelectSplitImageRects(splitImageRects[i]) )
+				{
+					thickness = 3;
+					color = CV_RGB(0XFF,0XFF,0XFF);
+				}
+				drawDashRect( subSrcImageMat,1,2,&rect,color,thickness );  
+				int x = ( rect.x - 5 )> 0 ?   ( rect.x - 5 ): 0 ;
+				int y = ( rect.y - 5 )> 0 ?   ( rect.y - 5 ): 0 ;
+				String words ; 
+				words = format("(%d,%d,%d,%d)",splitImageRects[i].x  , splitImageRects[i].y, splitImageRects[i].width,  splitImageRects[i].height );
+
+				putText( subSrcImageMat, words, Point( x , y ),CV_FONT_HERSHEY_COMPLEX, 0.5, Scalar(255, 0, 0) );
+
+			}
+
+			//imshow( "show2" , subSrcImageMat );
+			//waitKey();
 			
 		}
 	
+
 	}
 
-
+	
+	
 	subSrcImageMat.copyTo(showImageMat);
 	//cv::Mat tempShow = showImageMat.clone();
 	if( ( pt1 != NULL) && (pt2 != NULL) )
@@ -585,7 +692,17 @@ void CpictureCutDlg::deleteContous()
 
 	selectList.clear();
 
-	Update();
+	// 重新生成 过滤矩阵（透明度矩阵）
+	generateFilterMat();
+
+	if ( showClipImageFlag )
+	{
+		OnBnClickedBiaoding();
+	}
+	else
+	{
+		Update();
+	}
 }
 
 BOOL CpictureCutDlg::PreTranslateMessage(MSG* pMsg)
@@ -643,13 +760,19 @@ BOOL CpictureCutDlg::PreTranslateMessage(MSG* pMsg)
 		end_xPos = 0;
 		end_yPos = 0;
 		doMultConsSelect( cvPointStart , cvPointEnd );
+		doMultClipRectSelect( cvPointStart , cvPointEnd );
+
+		WorkMode = MODE_NULL;
 	 }
 	 
 	 if (pMsg->message==WM_LBUTTONUP)
 	 {
 		 moveAction = false;
 		 end_xPos = GET_X_LPARAM(pMsg->lParam);  
-		 end_yPos = GET_Y_LPARAM(pMsg->lParam);  
+		 end_yPos = GET_Y_LPARAM(pMsg->lParam); 
+
+		 consAdjust( end_xPos , end_yPos );
+		 
 		 //有down先发生了
 		if( ( abs( end_xPos - start_xPos ) < 10 ) || ( abs( end_yPos - start_yPos ) < 10 ) )
 		{	//移动太小 // 作为点击操作来处理
@@ -663,6 +786,7 @@ BOOL CpictureCutDlg::PreTranslateMessage(MSG* pMsg)
 				end_xPos = 0;
 				end_yPos = 0;
 				concourSelect( cvPoint );
+
 
 			return CDialog::PreTranslateMessage( pMsg );
 		}
@@ -764,7 +888,7 @@ BOOL CpictureCutDlg::PreTranslateMessage(MSG* pMsg)
 	 if(( pMsg->message==WM_MOUSEMOVE  ) && (start_xPos != 0 ) && (start_yPos != 0 )  &&  moveAction )
 	 {
 
-		 TRACE( "pMsg->hwnd = 0x%X ,IDC_SHOW_PICTURE = 0x %x \n", pMsg->hwnd ,GetDlgItem(IDC_SHOW_PICTURE)->m_hWnd );
+		  TRACE( "pMsg->hwnd = 0x%X ,IDC_SHOW_PICTURE = 0x %x \n", pMsg->hwnd ,GetDlgItem(IDC_SHOW_PICTURE)->m_hWnd );
 		  if (pMsg->hwnd == GetDlgItem(IDC_SHOW_PICTURE)->m_hWnd)
 		  {
 		   //SetDlgItemText(IDC_SHOW_PICTURE,"BUN1 UP");
@@ -811,8 +935,32 @@ void CpictureCutDlg::OnClickedShowPicture()
 
 }
 
+//做 合并标定 rect 选择
+void CpictureCutDlg::doMultClipRectSelect( cv::Point start , cv::Point end )
+{
+	selectSplitImageRects.clear();
 
-void CpictureCutDlg::doMultConsSelect(  cv::Point start , cv::Point end )
+	picturePointRefectToRoiPoint( start , start );
+	picturePointRefectToRoiPoint( end , end );
+	
+	int x_start = ( start.x < end.x )?  start.x : end.x ;
+	int x_end   = ( start.x < end.x )?  end.x : start.x ;
+	int y_start = ( start.y < end.y )?  start.y : end.y ;
+	int y_end   = ( start.y < end.y )?  end.y : start.y ;
+	
+	for( int i = 0 ; i < splitImageRects.size() ; i++ )
+	{
+			
+		CvRect  rect = splitImageRects.at( i );
+			
+		if(  ( rect.x >= x_start ) && ( rect.x <= x_end ) && ( rect.y >= y_start ) && ( rect.y <= y_end )  )
+		{
+			selectSplitImageRects.push_back( rect );
+		}
+	}
+}
+
+void CpictureCutDlg::picturePointRefectToRoiPoint( cv::Point in , cv::Point &out  )
 {
 	CRect wndRect;
 	m_showPicture.GetClientRect(&wndRect);
@@ -829,8 +977,14 @@ void CpictureCutDlg::doMultConsSelect(  cv::Point start , cv::Point end )
 	dstRect.width = roiRect.width;
 	dstRect.height = roiRect.height;
 
-	refect( srcRect , dstRect , start , &start );
-	refect( srcRect , dstRect , end , &end );
+	refect( srcRect , dstRect , in , &out );
+}
+
+void CpictureCutDlg::doMultConsSelect(  cv::Point start , cv::Point end )
+{
+	picturePointRefectToRoiPoint( start , start );
+	picturePointRefectToRoiPoint( end , end );
+
 
 	CvRect roiCutRect;
 	roiCutRect.x =  ( start.x < end.x )? start.x : end.x ;
@@ -854,6 +1008,8 @@ void CpictureCutDlg::doMultConsSelect(  cv::Point start , cv::Point end )
 
 	Update( );
 }
+
+
 void CpictureCutDlg::concourSelect(cv::Point cvPoint)
 {
 	//获得当前的做标的
@@ -1461,15 +1617,10 @@ void CpictureCutDlg::contourAlphaMask( vector<Point> contour )
 
 
 }
-
-//抠图
-void CpictureCutDlg::OnBnCutOut()
+//产生 alpha mat
+void CpictureCutDlg:: generateFilterMat()
 {
-	
-	cutOutFlag = !cutOutFlag;
-
-	
-	if( cutOutFlag )
+	if( showClipImageFlag )
 	{// 全不可见
 		vector<Vec4i> hierarchy;
 		alphaMat = cv::Mat::zeros( alphaMat.size() , CV_8UC3 );
@@ -1484,17 +1635,17 @@ void CpictureCutDlg::OnBnCutOut()
 					
 			}
 		}
+		//生成图像抠图后每个图片的Rect列表
+		//splitImageRects = SpliteVisiableImage( alphaMat );
 
 	}
 	else
 	{
+		//splitImageRects.clear();
 		alphaMat = Mat(alphaMat.size(),CV_8UC3,Scalar(1,1,1) );
 	}
-
-	
-	Update();
-
 }
+
 
 
 bool CpictureCutDlg::isConsHasBeenSelectd( int which )
@@ -1559,9 +1710,1330 @@ void CpictureCutDlg::OnDblclkShowPicture()
 	// TODO: 在此添加控件通知处理程序代码
 }
 
+//获取轮廓的外接矩形
+CvRect getConnectAreaRt(vector<Point> *reVec)
+{
+	// 调用 GetConnectAreaPoint 获得所有和in相连的点的集合
+	//将所有点的x放到 vector<int> xVector中 ，并且 调用std::sort排序
+	//将所有点的y放到 vector<int> yVector中 ，并且 调用std::sort排序
 
+
+	//用 （minx,miny） ,(maxx,maxy),形成矩形
+	vector<int> xVector;
+	vector<int> yVector;
+
+	for (int i = 0; i < reVec->size(); i++)
+	{
+		xVector.push_back(reVec->at(i).x);
+		yVector.push_back(reVec->at(i).y);
+	}
+	sort(xVector.begin(), xVector.end());
+	sort(yVector.begin(), yVector.end());
+	int x = xVector.at(0);
+	int y = yVector.at(0);
+	int width = xVector.at(xVector.size() - 1) - x + 1;
+	int height = yVector.at(yVector.size() - 1) - y + 1;
+	CvRect reCV( x, y, width, height );
+
+	return reCV;
+}
+
+//判断旁边的点是否在考虑的点范围内，如果是，则此点也是应该被考虑的
+bool isConsiderPoint(cv::Mat &tmpMat, Point in ){
+
+
+	int line = in.y;
+	int col = in.x;
+
+
+	//左边
+	if ((col - 1) >= 0)
+	{
+		int s = tmpMat.at<uchar>(line , col - 1);
+		if (s == 1)
+		{
+			return true;
+		}
+	}
+
+
+	//左上
+	if ((line - 1) >= 0 && (col - 1) >= 0)
+	{
+		int s = tmpMat.at<uchar>(line - 1, col - 1);
+		if (s == 1)
+		{
+			return true;
+		}
+	}
+	
+
+
+	//上
+	if ((line - 1) >= 0)
+	{
+		int s = tmpMat.at<uchar>(line - 1, col);
+		if (s == 1)
+		{
+			return true;
+		}
+	}
+
+
+	//右上
+	if ((line - 1 >= 0) && (col + 1) < tmpMat.cols)
+	{
+		int s = tmpMat.at<uchar>(line - 1, col + 1);
+		if (s == 1)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+
+
+
+void getConnectArea(cv::Mat &mat, Point in, vector<Point> *reVec){
+
+	cv::Mat tmpMat =  Mat::zeros( mat.rows, mat.cols, CV_8UC1 );
+	tmpMat.at<uchar>(in.y,in.x) = 1; 
+	reVec->push_back(in);
+
+	for (int i = in.y; i < mat.rows; i++)
+	{ // 
+		int num = 0;
+		for (int j = 0; j < mat.cols; j++)
+		{
+			Vec3b &s = mat.at<Vec3b>(i, j);
+			if (s[0] == 1){
+				Point point(j, i);
+				if( isConsiderPoint(tmpMat, point ) )
+				{
+					tmpMat.at<uchar>(i,j) = 1; 
+					reVec->push_back( point);
+					num ++;
+				}
+			}
+		}
+		if (num == 0){
+			return;
+		}
+	}
+}
+
+
+
+CvRect CpictureCutDlg::GetConnectAreaRect(cv::Mat &mat  , Point in )
+{
+	vector<Point> reVec;
+	
+	getConnectArea(mat, in, &reVec);
+	CvRect ret = getConnectAreaRt(&reVec);
+
+	return ret;
+
+
+}
 void CpictureCutDlg::OnBnClickedRangeSelect()
 {
 	
 }
 
+
+//将mat的素有可见区域分割成n个图像
+vector<CvRect> CpictureCutDlg::SpliteVisiableImage(cv::Mat mat)
+{
+	//以x为基础递增循环这个mat( for 循环 先行后列 )
+	//如果当前点是 （1,1,1），那么调用 GetConnectAreaPoint 获得其矩形
+	// 生成一个输出的mat build 一个 SPLITE_IMAGE_INFO_t 结构，放到输出vector中
+	//将上面的矩形内的所有点设置为 (0,0,0)
+
+
+	//reurn
+	vector<CvRect> reVec;
+	Point in;
+	for (int i = 0; i < mat.rows; i++)
+	{
+		for (int j = 0; j < mat.cols; j++)
+		{
+			Vec3b &s = mat.at<Vec3b>(i, j);  // at（ 行，列）
+			if (s[0] == 1){
+				//circle(mat,cvPoint(j ,i),10,CV_RGB(0,255,255),2,8,0);    
+				in.x = j;
+				in.y = i;
+				CvRect reCV = GetConnectAreaRect(mat, in);
+
+				//reset zero data 
+				cv::Mat image_roi = mat(reCV);
+				cv::Mat zeroMat = cv::Mat::zeros(reCV.height,reCV.width, CV_8UC3);
+				zeroMat.copyTo(image_roi);
+
+				reVec.push_back(reCV);
+			}
+		}
+	}
+
+
+	return reVec;
+}
+
+
+//保存最后的结果
+
+void CpictureCutDlg::saveCalResult( String cvFileDirect , vector<RECT_VECTOR>  RelateList  )
+{
+	for( int k = 0 ; k < RelateList.size() ; k ++ )
+	{
+		for( int m = 0 ; m < RelateList[k].rectVec.size() ; m ++ )
+		{	
+		
+			String fileName ;
+			fileName = format( "%s/%s_%d.png",cvFileDirect.c_str() , RelateList[k].Name.c_str() , m);
+			
+			CvRect rect = RelateList[k].rectVec[m] ;
+			Mat mat =  Mat::zeros( rect.height,rect.width, CV_8UC4);
+			cvtColor( srcMat(rect).clone() , mat ,CV_BGR2BGRA );
+			Mat filter = alphaMat(rect).clone();
+			for (int i = 0; i < filter.rows; i++)
+			{
+				for (int j = 0; j < filter.cols; j++)
+				{
+					Vec4b &mat_s = mat.at<Vec4b>(i, j);
+					Vec3b &filter_s = filter.at<Vec3b>(i, j);
+					if( filter_s[0] == 0 )
+					{
+						mat_s[3] = 0;
+					}
+					else
+					{
+						mat_s[3] = 255;
+					}
+					
+				}
+			}
+
+			//Mat filterMat =  Mat(rect.height,rect.width,CV_8UC4,Scalar(1,1,1 ,1)) ;
+			vector<int>compression_params;  
+			compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);  
+			compression_params.push_back(9);  
+			imwrite( fileName , mat, compression_params); 
+		}
+	}
+}
+
+void CpictureCutDlg::OnBnClickedSaveCalResult()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	CFileDialog dlg(FALSE,(""),("pic"),OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,(""));
+
+	dlg.DoModal();	
+
+	if( dlg.GetPathName().IsEmpty() )
+	{
+		std::cout << "read GetPathName error!" << std::endl;
+		return ;
+	}
+	else
+	{
+		String cvFileName ;
+		cvFileName = dlg.GetPathName();
+		
+		for( int k = 0 ; k < splitImageRects.size() ; k++ )
+		{
+			String fileName ;
+			fileName = format( "_%d.png",k);
+			fileName = cvFileName + fileName;
+			
+			CvRect rect = splitImageRects[k];
+			Mat mat =  Mat::zeros( rect.height,rect.width, CV_8UC4);
+			cvtColor( srcMat(rect).clone() , mat ,CV_BGR2BGRA );
+			Mat filter = alphaMat(rect).clone();
+			for (int i = 0; i < filter.rows; i++)
+			{
+				for (int j = 0; j < filter.cols; j++)
+				{
+					Vec4b &mat_s = mat.at<Vec4b>(i, j);
+					Vec3b &filter_s = filter.at<Vec3b>(i, j);
+					if( filter_s[0] == 0 )
+					{
+						mat_s[3] = 0;
+					}
+					else
+					{
+						mat_s[3] = 255;
+					}
+					
+				}
+			}
+
+			//Mat filterMat =  Mat(rect.height,rect.width,CV_8UC4,Scalar(1,1,1 ,1)) ;
+			vector<int>compression_params;  
+			compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);  
+			compression_params.push_back(9);  
+			imwrite( fileName , mat, compression_params);  
+		}
+
+	}
+
+	
+
+	
+}
+
+
+//抠图
+void CpictureCutDlg::OnBnCutOut()
+{
+	
+	generateFilterMat();
+	
+	Update();
+
+}
+
+
+void CpictureCutDlg::OnBnClickedBiaoding()
+{
+	splitImageRects.clear();
+	calibrationFlag = true;
+
+	Mat matClone = alphaMat.clone();
+	//test
+	/*
+	for (int i = 0; i < matClone.rows; i++)
+	{
+		for (int j = 0; j < matClone.cols; j++)
+		{
+			Vec3b &filter_s = matClone.at<Vec3b>(i, j);
+			if( filter_s[0] == 1 )
+			{
+				filter_s[1] = 255;
+			}	
+		}
+	}
+	*/
+	//imshow( " source " , matClone );
+	//生成图像抠图后每个图片的Rect列表
+	splitImageRects = SpliteVisiableImage(  matClone );
+
+	Update();
+	
+}
+
+//切换是否显示标定结果
+void CpictureCutDlg::OnBnClickedShowBiaodingResult()
+{
+	calibrationFlag = !calibrationFlag;
+
+	if( showClipImageFlag && ( splitImageRects .size() == 0 ) )
+	{
+		OnBnClickedBiaoding();
+	}
+
+}
+
+//做合并标定矩形的操作
+void CpictureCutDlg::OnBnClickedMergeArea()
+{
+	int x_start = 0;
+	int x_end   = 0;
+	int y_start = 0;
+	int y_end   = 0;
+
+	if( selectSplitImageRects.size() > 1 )
+	{
+
+		x_start = selectSplitImageRects.at(0).x;
+		x_end = selectSplitImageRects.at(0).x;
+		y_start = selectSplitImageRects.at(0).y;
+		y_end = selectSplitImageRects.at(0).y;
+
+
+		vector<CvRect>::iterator itor;
+		for( itor = selectSplitImageRects.begin();itor!=selectSplitImageRects.end();)  
+		{  
+			x_start = ( x_start < (*itor).x ) ? x_start : (*itor).x;
+			x_end =   ( x_end > ((*itor).x + (*itor).width)) ? x_end : ((*itor).x + (*itor).width);
+			y_start = ( y_start < (*itor).y ) ? y_start : (*itor).y;
+			y_end = ( y_end > ((*itor).y + (*itor).height)) ? y_end :  ((*itor).y + (*itor).height);
+			vector<CvRect>::iterator selectitor;
+			for( selectitor = splitImageRects.begin();selectitor!= splitImageRects.end();)  
+			{  
+				if( ( itor->x == selectitor->x ) &&  ( itor->y == selectitor->y ) )
+				{
+					selectitor = splitImageRects.erase( selectitor );
+				}
+				else
+				{
+					selectitor++;  
+				}
+
+			}  
+
+			itor++;  
+
+			
+
+		}  
+
+
+		//splitImageRects.erase(
+		
+		splitImageRects.push_back( CvRect ( x_start ,y_start ,  x_end - x_start+1 , y_end - y_start+1 ) );
+		
+		Update();
+
+	}
+
+	
+}
+//找到所有和in 相连接的点，输出到reVec中
+void getConnectA(cv::Mat mat, cv::Mat tmpMat, Point in, vector<Point> *reVec){
+
+	for (int i = in.y; i < mat.rows; i++)
+	{
+		int num = 0;
+
+		for (int j = 0; j < mat.cols; j++)
+		{
+			int s = mat.at<uchar>(i, j);
+
+			if (s == 0){
+
+				Point point( j, i);
+
+				if (isConsiderPoint(tmpMat, point)){
+
+					tmpMat.at<uchar>(i,j) = 1; 
+
+					reVec->push_back(point);
+
+					num++;
+
+				}
+
+
+
+
+			}
+
+		}
+
+		if (num == 0){
+
+			return;
+
+		}
+
+	}
+
+}
+
+void setPointsValue(cv::Mat mat, vector<Point> *reVec){
+
+	for (int i = 0; i < reVec->size(); i++)
+	{
+		Point tempP = reVec->at(i);
+		mat.at<uchar>(tempP.y, tempP.x) = 255;
+
+	}
+
+}
+
+// 是否是内部点， true 是 false 不是
+bool isInsideArea(Point point, cv::Mat mat){
+
+	int x = point.x;
+	int y = point.y;
+
+
+	int x_start = ( (x -1 ) >= 0 )? ( (x -1 ) >= 0 ) : 0 ;
+	int x_end   = ( (x +1 ) < mat.cols )? ( ( x +1 ) >= 0 ) : ( mat.cols - 1 ); 
+	int y_start = ( (y -1 ) >= 0 )? ( (y -1 ) >= 0 ) : 0 ;
+	int y_end   = ( (y +1 ) < mat.rows )? ( ( y +1 ) >= 0 ) :  ( mat.rows - 1 ); 
+
+	for( int i = x_start ; i <= x_end ; i ++ )
+	{
+		for( int j = y_start ; j <= y_end ; j ++ )
+		{
+			int s = mat.at<uchar>( y,x - 1);
+			if (s == 255)
+			{
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+cv::Mat createCmpMat(cv::Mat mat, Point in, vector<Point> *vecMerge, CvRect reRect){
+
+	cv::Mat tmpMat;
+
+	tmpMat.create(mat.rows, mat.cols, CV_8UC1);
+
+
+	for (int i = 0; i < tmpMat.rows; i++)
+	{
+		for (int j = 0; j < tmpMat.cols; j++)
+		{
+			if (i == in.y && j == in.x){
+
+				tmpMat.at<uchar>(i, j) = 1;
+
+			}
+			else
+			{
+				tmpMat.at<uchar>(i, j) = 0;
+
+			}
+
+		}
+
+	}
+
+	return tmpMat;
+
+}
+
+//去除轮廓中多余的点
+void removeRedundanceInContour(vector<Point> * vecMerge){
+
+	if( vecMerge->size() == 0 ) { return ;}
+	CvRect reRect = getConnectAreaRt(vecMerge);
+
+	//建 左右都有一个空余的mat
+	//cv::Mat src = Mat::zeros(reRect.height + 2, reRect.width + 2, CV_8UC1);
+
+	cv::Mat src = Mat(reRect.height + 2, reRect.width + 2, CV_8UC1,Scalar(255) );
+	//vector上都设置为1
+	vector<Point> DupVecMerge;
+	for (int i = 0; i < vecMerge->size(); i++)
+	{
+		DupVecMerge.push_back( Point( vecMerge->at(i).x - reRect.x + 1  , vecMerge->at(i).y - reRect.y + 1 ) );
+		src.at<uchar>( vecMerge->at(i).y - reRect.y + 1 , vecMerge->at(i).x - reRect.x + 1 ) = 1;
+	}
+
+	vector<vector<Point>> cons ;
+	cons.push_back( DupVecMerge );
+	drawContours( src, cons, -1, Scalar(0 ), -1 );
+	/*
+	Point point(0, 0);
+
+	vector<Point> reVec;
+
+	reVec.push_back(point);
+
+	cv::Mat tmpMat = createCmpMat(src, point, vecMerge, reRect);
+
+	//找到所有和point 相连接的点，输出到reVec中
+	getConnectA(src, tmpMat, point, &reVec);
+	imshow( "before setPointsValue" , src );
+	//把轮廓外面的点都设置为255
+	setPointsValue(src, &reVec);
+	*/
+	
+	imshow( " show" , src );
+	int index = 0;
+
+	while (index < vecMerge->size()){
+
+		Point point( vecMerge->at(index).x - reRect.x + 1 , vecMerge->at(index).y - reRect.y + 1 );
+
+		if (isInsideArea(point, src)){
+
+			vecMerge->erase(vecMerge->begin() + index);
+		}
+
+		else{
+
+			index++;
+
+		}
+
+	}
+
+}
+
+//对两个轮廓合并进行合并操作
+vector<Point> combinationArea( vector<Point> vecOne, vector<Point> vecTwo){
+
+	vector<Point> vecMerge;
+
+	vecMerge.insert(vecMerge.end(), vecOne.begin(), vecOne.end());
+
+	vecMerge.insert(vecMerge.end(), vecTwo.begin(), vecTwo.end());
+
+	removeRedundanceInContour(&vecMerge);
+
+	return vecMerge;
+
+}
+
+
+#define rectSideLength 10
+vector<Point> getRectPointVec(vector<Point> *srcVec, Point in){
+
+	vector<Point> reVec;
+
+	for (int i = 0; i < srcVec->size(); i++)
+
+	{
+
+		Point point = srcVec->at(i);
+
+		if (point.x >= in.x - rectSideLength && point.x <= in.x + rectSideLength && point.y >= in.y - rectSideLength && point.y <= in.y + rectSideLength)
+
+		{
+
+			reVec.push_back(point);
+
+		}
+
+	}
+
+	return reVec;
+
+}
+
+
+void completePointX(Point beginPoint, Point endPoint, vector<Point> *srcVec){
+
+	int subX = endPoint.x - beginPoint.x;
+
+	int subY = endPoint.y - beginPoint.y;
+
+	int averageY = (int)((float)subY / (float)subX + 0.5);
+
+	for (int i = beginPoint.x + 1; i < endPoint.x; i++)
+
+	{
+
+		Point point(i, (i - beginPoint.x) * averageY + beginPoint.y);
+
+		srcVec->push_back(point);
+
+	}
+
+}
+
+
+
+
+
+
+
+void getBreakPointX(vector<int> xVector, vector<Point> *srcVec){
+
+	int beginX = -1;
+	int endX = -1;
+
+	bool isBreakPoint = true;
+
+	for (int i = 0; i < xVector.size()-1; i++)
+
+	{
+
+		if (xVector.at(i + 1) - xVector.at(i) > 1 && isBreakPoint){
+
+			beginX = xVector.at(i);
+
+		}
+
+		else if (xVector.at(i + 1) - xVector.at(i) < 1 && !isBreakPoint){
+
+			endX = xVector.at(i);
+
+		}
+
+	}
+
+
+
+
+	Point beginPoint, endPoint;
+
+	for (int i = 0; i < srcVec->size(); i++)
+
+	{
+
+		if (srcVec->at(i).x == beginX){
+
+			beginPoint = srcVec->at(i);
+
+		}
+
+		if (srcVec->at(i).x == endX){
+
+			endPoint = srcVec->at(i);
+
+		}
+
+	}
+
+	completePointX(beginPoint, endPoint, srcVec);
+
+}
+
+
+
+void completePointY(Point beginPoint, Point endPoint, vector<Point> *srcVec){
+
+	int subX = endPoint.x - beginPoint.x;
+
+	int subY = endPoint.y - beginPoint.y;
+
+	int averageX = (int)((float)subX / (float)subY + 0.5);
+
+	for (int i = beginPoint.y + 1; i < endPoint.y; i++)
+
+	{
+
+		Point point((i - beginPoint.y) * averageX + beginPoint.x, i);
+
+		srcVec->push_back(point);
+
+	}
+
+}
+
+
+
+
+
+
+
+void getBreakPointY(vector<int> yVector, vector<Point> *srcVec){
+
+	int beginY = -1;
+	int endY = -1;
+
+	bool isBreakPoint = true;
+
+	for (int i = 0; i < yVector.size() -1; i++)
+
+	{
+
+		if (yVector.at(i + 1) - yVector.at(i) > 1 && isBreakPoint){
+
+			beginY = yVector.at(i);
+
+		}
+
+		else if (yVector.at(i + 1) - yVector.at(i) < 1 && !isBreakPoint){
+
+			endY = yVector.at(i);
+
+		}
+
+	}
+
+
+
+
+	Point beginPoint, endPoint;
+
+	for (int i = 0; i < srcVec->size(); i++)
+
+	{
+
+		if (srcVec->at(i).y == beginY){
+			beginPoint = srcVec->at(i);
+
+		}
+
+		if (srcVec->at(i).y == endY){
+			endPoint = srcVec->at(i);
+		}
+
+	}
+
+	completePointY(beginPoint, endPoint, srcVec);
+
+}
+
+
+
+
+
+
+
+void completionRectPointX(vector<Point> *srcVec, Point in){
+
+	vector<Point> reVec = getRectPointVec(srcVec, in);
+
+	vector<int> xVector;
+
+	for (int i = 0; i < reVec.size(); i++)
+	{
+		xVector.push_back(reVec.at(i).x);
+	}
+	sort(xVector.begin(), xVector.end());
+	getBreakPointX(xVector, srcVec);
+
+}
+
+
+
+
+
+
+
+void completionRectPointY(vector<Point> *srcVec, Point in){
+
+	vector<Point> reVec = getRectPointVec(srcVec, in);
+
+	vector<int> yVector;
+
+	for (int i = 0; i < reVec.size(); i++)
+	{
+		yVector.push_back(reVec.at(i).y);
+	}
+
+	sort(yVector.begin(), yVector.end());
+
+	getBreakPointY(yVector, srcVec);
+
+}
+
+
+void completionRectPoint(vector<Point> *srcVec){
+
+	for (int i = 0; i < srcVec->size(); i++)
+	{
+
+		completionRectPointX(srcVec, srcVec->at(i));
+
+	}
+
+	for (int i = 0; i < srcVec->size(); i++)
+
+	{
+
+		completionRectPointY(srcVec, srcVec->at(i));
+
+	}
+
+}
+
+
+//多个轮廓合并
+void CpictureCutDlg::OnBnClickedMeger()
+{
+	vector< vector<Point> > select;
+	int index = 0;
+	for( vector<vector<Point> >::iterator it= contours.begin();it!=contours.end(); index++)
+	{
+		
+		if(  isConsHasBeenSelectd( index )  )
+		{
+			select.push_back(*it);
+			it = contours.erase(it);
+		}
+		else
+		{
+			it++;
+		}
+	}
+	selectList.clear();
+
+	vector<Point> vecOne;
+	vector<Point> vecTwo;
+
+	if(select.size() > 0 )
+	{
+		vecOne = select[0];
+	}
+	for( int i = 1 ; i < select.size() ; i++ )
+	{
+		vecTwo = select[i];
+		vecOne = combinationArea( vecOne , vecTwo );
+	}
+
+	if(select.size() > 0 )
+	{
+		contours.push_back( vecOne );
+	}
+
+	selectList.push_back( contours.size() );
+	
+	Update();
+}
+
+
+//轮廓弥合，在有缺口的地方会被弥合上
+void CpictureCutDlg::OnBnClickedFix()
+{
+	for( int i = 0 ; i < selectList.size() ; i++ )
+	{
+		completionRectPoint( &contours[i]); 
+	}
+
+	Update();
+}
+
+
+bool isRectIntersect(vector<CvRect> * reVec, HEIGHT_INTERVAL * heightValue, CvRect cmpRect){
+
+	int baseRectTopY = heightValue->topY;
+
+	int baseRectBottomY = heightValue->bottomY;
+
+
+
+
+	int cmpRectTopY = cmpRect.y;
+
+	int cmpRectBottomY = cmpRect.y + cmpRect.height;
+
+
+
+
+	if (baseRectTopY <= cmpRectTopY && baseRectBottomY >= cmpRectTopY){
+
+		reVec->push_back(cmpRect);
+
+		if (baseRectBottomY < cmpRectBottomY){
+
+			heightValue->bottomY = cmpRectBottomY;
+
+		}
+
+		return true;
+
+	}
+
+	if (baseRectTopY >= cmpRectTopY && baseRectTopY <= cmpRectBottomY){
+
+		reVec->push_back(cmpRect);
+
+		if (baseRectBottomY < cmpRectBottomY){
+
+			heightValue->topY = cmpRectTopY;
+
+			heightValue->bottomY = cmpRectBottomY;
+
+		}
+
+		else
+
+		{
+
+			heightValue->topY = cmpRectTopY;
+
+		}
+
+		return true;
+
+	}
+
+	return false;
+
+}
+
+bool rectSortByX(const CvRect& obj1,const CvRect& obj2) 
+{
+	return ( obj1.x < obj2.x );
+}
+
+bool rectSortByY(const CvRect& obj1,const CvRect& obj2) 
+{
+	return ( obj1.y < obj2.y );
+}
+
+
+//获取每个 relative 内的所有的rect
+RECT_VECTOR getRelateRectBySort(vector<CvRect> *srcVec, CvRect baseRect){
+
+	int topY = baseRect.y;
+	int bottomY = topY + baseRect.height;
+	vector<CvRect> reVec;
+	reVec.push_back(baseRect);
+	HEIGHT_INTERVAL heightValue = { topY, bottomY };
+	int index = 0;
+	while (index < srcVec->size()){
+		CvRect tempRect = srcVec->at(index);
+		if (isRectIntersect(&reVec, &heightValue, tempRect)){
+			srcVec->erase(srcVec->begin() + index);
+		}
+		else{
+			index++;
+		}
+	}
+	sort( reVec.begin(),reVec.end() , rectSortByX );
+	RECT_VECTOR reRectVec = { reVec, heightValue ,"" };
+	return reRectVec;
+
+}
+
+
+
+
+vector<RECT_VECTOR> spliteVec(vector<CvRect> srcVec ,String FileName ){
+
+	vector<RECT_VECTOR> reVec;
+	
+	while (srcVec.size() > 0)
+	{
+		CvRect baseRect = srcVec.at(0);
+		srcVec.erase(srcVec.begin());
+		reVec.push_back(getRelateRectBySort(&srcVec, baseRect));
+		String name = format("%s_%d", FileName.c_str() , reVec.size() - 1 );
+		reVec.at(reVec.size() - 1 ).Name = name;
+	}
+	return reVec;
+
+}
+
+//输出 layout 文件
+void CpictureCutDlg::outputLayoutFile()
+{
+	
+
+	// TODO: 在此添加控件通知处理程序代码
+	CFileDialog dlg(FALSE,("xml"),(".xml"),OFN_OVERWRITEPROMPT | OFN_OVERWRITEPROMPT,("xml file(*.xml) |*.xml||"));
+
+	dlg.DoModal();	
+
+	if( dlg.GetPathName().IsEmpty() )
+	{
+		std::cout << "read GetPathName error!" << std::endl;
+		return ;
+	}
+	else
+	{
+		String FolderName = dlg.GetFolderPath();//只是路径
+		String PahtName = dlg.GetPathName(); //全路径+文件名
+		CString FileName = dlg.GetFileName();
+
+		FileName.Replace(".xml","");
+		vector<RECT_VECTOR>  RelateList = spliteVec( splitImageRects , FileName.GetBuffer(0) );
+	
+		saveCalResult( FolderName, RelateList  );
+		XlmGenerate  ( PahtName ,RelateList );
+
+	}
+}
+
+void CpictureCutDlg::OnBnClickedSaveLayoutFile()
+{
+	outputLayoutFile();
+	
+}
+
+
+inline HRESULT raise_on_failure(HRESULT hResult) {
+	if (FAILED(hResult))
+		_com_raise_error(hResult);
+
+	return hResult;
+}
+
+//格式化 xml文件
+void WriteXmlWithFormat(MSXML2::IXMLDOMDocument3* document, IStream* output)
+{
+	MSXML2::IMXWriterPtr writer(__uuidof(MSXML2::MXXMLWriter60));
+	writer->omitXMLDeclaration = VARIANT_FALSE;
+	writer->standalone = VARIANT_TRUE;
+	writer->indent = VARIANT_TRUE;
+	writer->byteOrderMark = VARIANT_FALSE;
+	writer->encoding = L"utf-8";
+
+	MSXML2::ISAXContentHandlerPtr ch = writer;
+	MSXML2::ISAXErrorHandlerPtr eh = writer;
+	MSXML2::ISAXDTDHandlerPtr dh = writer;
+
+	MSXML2::ISAXXMLReaderPtr reader(__uuidof(MSXML2::SAXXMLReader60));
+
+	raise_on_failure(reader->putContentHandler(ch));
+	raise_on_failure(reader->putErrorHandler(eh));
+	raise_on_failure(reader->putDTDHandler(dh));
+	wchar_t lexical_handler[] = L"http://xml.org/sax/properties/lexical-handler";
+	wchar_t declaration_handler[] = L"http://xml.org/sax/properties/declaration-handler";
+	raise_on_failure(reader->putProperty(reinterpret_cast<unsigned short*>(lexical_handler), _variant_t(writer.GetInterfacePtr())));
+	raise_on_failure(reader->putProperty(reinterpret_cast<unsigned short*>(declaration_handler), _variant_t(writer.GetInterfacePtr())));
+
+	writer->output = _variant_t(output);
+	raise_on_failure(reader->parse(_variant_t(document)));
+}
+
+//打印出单个relative的布局
+void CpictureCutDlg::printOutRelativeLayout(  MSXML2::IXMLDOMDocumentPtr pDoc ,MSXML2::IXMLDOMElementPtr pElement , RECT_VECTOR  *Relative )
+{
+	String commentId =  (char*) (_bstr_t)(pElement->getAttribute( "android:id" ));
+	
+	float imageW = srcMat.cols;
+	float imageH = srcMat.rows;
+
+	MSXML2::IXMLDOMElementPtr pElement1;
+	for( int i = 0 ; i < Relative->rectVec.size() ; i++ )
+	{
+		pElement1 = pDoc -> createElement((_bstr_t)"ImageView");
+		// 设置属性
+		String Id = format( "%s_%d",commentId.c_str() , i );
+		pElement1 -> setAttribute( "android:id" , Id.c_str() );
+
+		//百分比布局的情况下，width/height 必须设置为 0dp
+		pElement1 -> setAttribute( "android:layout_width" , "0dp" );
+		pElement1 -> setAttribute( "android:layout_height" ,"0dp");
+		
+		String left = format( "%f%%" , Relative->rectVec[i].x *100 / imageW );
+		pElement1 -> setAttribute( "app:layout_marginLeftPercent" , left.c_str() );
+		
+		String top = format( "%f%%" , ( Relative->rectVec[i].y -  Relative->heightValue.topY + 1)*100/imageH );
+		pElement1 -> setAttribute( "app:layout_marginTopPercent" , top.c_str() );
+
+		String w = format( "%f%%" , Relative->rectVec[i].width *100/ imageW );
+		pElement1 -> setAttribute( "app:layout_widthPercent" , w.c_str() );
+		
+		String h = format( "%f%%" , Relative->rectVec[i].height *100/ imageH );
+		pElement1 -> setAttribute( "app:layout_heightPercent" , h.c_str() );
+
+		String pic = format( "@drawable/%s_%d",Relative->Name.c_str() ,i ); 
+		pElement1 -> setAttribute( "android:background" , pic.c_str() );
+
+		pElement -> appendChild( pElement1 );
+	}
+
+}
+
+
+//打印出所有的 relative 布局
+void CpictureCutDlg::printOutRelativeListLayout( MSXML2::IXMLDOMDocumentPtr pDoc , MSXML2::IXMLDOMElementPtr xmlRoot , vector<RECT_VECTOR>  RelateList )
+{
+	MSXML2::IXMLDOMElementPtr pElement;        // 元素
+	String preId = "";
+	float imageH = srcMat.rows;
+	for( int i = 0 ; i < RelateList.size() ; i++ )
+	{
+		 // 节点的名称为Book
+		pElement = pDoc -> createElement((_bstr_t)"android.support.percent.PercentRelativeLayout");
+		// 设置属性
+		pElement -> setAttribute( "xmlns:app" ,"http://schemas.android.com/apk/res-auto" );
+		String id = format("@+id/%s" , RelateList[i].Name.c_str() ); 
+		pElement -> setAttribute( "android:id" ,id.c_str() );
+		pElement -> setAttribute( "android:layout_width" ,"match_parent" );
+		if( i != 0 )
+		{
+			pElement -> setAttribute( "android:layout_below" ,preId.c_str() );
+		}
+		preId = format("@id/%s" , RelateList[i].Name.c_str() ); ;
+		
+		int h = ( i == 0 ) ? ( RelateList[i].heightValue.bottomY ) : (( RelateList[i].heightValue.bottomY - RelateList[i-1].heightValue.bottomY + 1) );
+		pElement -> setAttribute( "android:layout_height" ,"0dp" );
+
+		String height = format( "%f%%" , h *100/ imageH );
+		pElement -> setAttribute( "app:layout_heightPercent" , height.c_str() );
+
+		//reset top ,bottom
+		RelateList[i].heightValue.topY = RelateList[i].heightValue.bottomY - h;
+		printOutRelativeLayout( pDoc , pElement , &RelateList[i] );
+
+		xmlRoot -> appendChild(pElement);
+		
+	}
+
+}
+
+void CpictureCutDlg::XlmGenerate( String outFile ,vector<RECT_VECTOR>  RelateList )
+{
+    // TODO: 在此添加控件通知处理程序代码
+ 
+    UpdateData(TRUE);
+    MSXML2::IXMLDOMDocumentPtr pDoc;                   // xml文档
+    MSXML2::IXMLDOMElementPtr xmlRoot;                 // 根节点
+    
+    MSXML2::IXMLDOMNodePtr pNode=NULL;                 // 节点
+    MSXML2::IXMLDOMProcessingInstructionPtr pProInstruction = NULL;      // xml声明
+ 
+    // 创建DOMDocument对象
+    HRESULT hr = pDoc.CreateInstance(__uuidof(MSXML2::DOMDocument60));   // MSXML6版本
+    if (!SUCCEEDED(hr))
+    {
+        MessageBox("无法创建DOMDocument对象，请检查是否安装了MS XML Parser 运行库！");
+        return;
+    }
+ 
+    // 创建xml文档声明：<?xml version="1.0" encoding="utf-8"?>
+    pProInstruction = pDoc->createProcessingInstruction((_bstr_t)(char*)"xml", (_bstr_t)(char*)"version=\"1.0\" encoding=\"utf-8\"");
+    pDoc->appendChild(pProInstruction);
+ 
+    // 根节点的名称为：LinearLayout
+    xmlRoot = pDoc -> createElement((_bstr_t)"android.support.percent.PercentRelativeLayout");
+	xmlRoot-> setAttribute( "xmlns:android" ,"http://schemas.android.com/apk/res/android" );
+	xmlRoot-> setAttribute( "xmlns:tools" ,"http://schemas.android.com/tools" );
+	xmlRoot -> setAttribute( "android:orientation" ,"vertical" );
+	xmlRoot-> setAttribute( "android:layout_width" ,"match_parent" );
+	xmlRoot-> setAttribute( "android:layout_height" ,"match_parent" );
+
+    pDoc -> PutRefdocumentElement(xmlRoot);
+	pDoc->raw_appendChild(xmlRoot,NULL);
+ 
+	printOutRelativeListLayout( pDoc , xmlRoot , RelateList );
+
+	try {
+			// 保存到文件。如果不存在就建立,存在就覆盖
+			pDoc -> save(outFile.c_str());
+
+			MSXML2::IXMLDOMDocument3Ptr document(__uuidof(MSXML2::DOMDocument60));
+
+			bstr_t const infile( outFile.c_str() );
+			bstr_t const outfile( outFile.c_str() );
+
+			document->load( infile );
+
+			IStreamPtr output;
+			FileStream::OpenFile( outfile, &output, true);
+
+			WriteXmlWithFormat(document, output);
+
+			
+		} catch (_com_error const& e) {
+			const TCHAR *  s = e.ErrorMessage();
+			std::wcerr << s << std::endl;
+	}
+}
+
+
+
+BOOL CpictureCutDlg::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
+{
+	if ( pWnd->m_hWnd == GetDlgItem(IDC_SHOW_PICTURE)->m_hWnd )
+	{
+		switch( WorkMode )
+		{
+		case MODE_PEN:
+			SetCursor(LoadCursor(NULL,IDC_CROSS )); // 十字
+			return TRUE;
+		case MODE_RUBBER:
+			SetCursor(LoadCursor(NULL,IDC_NO)); //
+			return TRUE;
+		case MODE_NULL:
+		default:
+			SetCursor(LoadCursor(NULL,IDC_ARROW )); //设定光标为箭头，就是我们平时用的。
+			return TRUE;;
+		}
+	}
+	return CDialogEx::OnSetCursor(pWnd, nHitTest, message);
+}
+
+//遍历所有轮廓在符合条件的轮廓中添加一点
+
+
+void addAPointToContour(vector<vector<Point>> *src, Point in){
+
+	for (int i = 0; i < src->size(); i++)
+	{
+
+		vector<Point> tempVec = src->at(i);
+		int j = 0;
+		
+		for ( j = 0; j < tempVec.size(); j++)
+		{
+			Point point = tempVec.at(j);
+			if (abs(point.x - in.x) + abs(point.y - in.y) < 5){
+				src->at(i).push_back( in );
+				break;
+			}
+		}
+		if( j < tempVec.size() )
+		{
+			removeRedundanceInContour( &(src->at(i)) );
+		}
+		
+
+	}
+}
+
+
+//删除一点后得到的所有轮廓
+vector<vector<Point>> getAfterDelContours(vector<Point> srcVec){
+	vector<vector<Point>> reVec;
+	vector<Point> tmpVec;
+	for (int i = 0; i < srcVec.size(); i++)
+	{
+		if (i == 0){
+			tmpVec.push_back(srcVec.at(i));
+		}
+		else
+		{
+			Point pointBefore = srcVec.at(i - 1);
+			Point pointAfter = srcVec.at(i);
+			if (abs(pointBefore.x - pointAfter.x) >= 1 || abs(pointBefore.y - pointAfter.y) >= 1){
+				reVec.push_back(tmpVec);
+				tmpVec.clear();
+			}
+			tmpVec.push_back(srcVec.at(i));
+		}
+	}
+	if (reVec.size() > 1){
+		vector<Point> frontVec = reVec.front();
+		vector<Point> backVec = reVec.back();
+		Point frontVecFirstPoint = frontVec.front();
+		Point backVecLastPoint = backVec.back();
+		if (abs(frontVecFirstPoint.x - backVecLastPoint.x) <= 1 && abs(frontVecFirstPoint.y - backVecLastPoint.y) <= 1){
+			vector<Point> vecMerge;
+			vecMerge.insert(vecMerge.end(), backVec.begin(), backVec.end());
+			vecMerge.insert(vecMerge.end(), frontVec.begin(), frontVec.end());
+			reVec.erase(reVec.begin());
+			reVec.erase(reVec.end());
+			reVec.push_back(vecMerge);
+		}
+	}
+	return reVec;
+}
+
+//遍历所有轮廓在符合条件的轮廓中删除一点
+void deleteAPointAtContour(vector<vector<Point>> *src, Point in){
+	bool isFind = false;
+	for (int i = 0; i < src->size(); i++)
+	{
+		vector<Point> tempVec = src->at(i);
+		for (int j = 0; j < tempVec.size(); j++)
+		{
+			Point point = tempVec.at(j);
+			if (point.x == in.x && point.y == in.y){
+				tempVec.erase(tempVec.begin() + j);
+
+				vector<vector<Point>> reBuildCon = getAfterDelContours( (*src)[i] );
+				src->erase( src->begin() + i ) ;
+				for( int m = 0 ; m < reBuildCon.size() ; m ++ )
+				{
+					src->push_back( reBuildCon[m] );
+				}
+				isFind = true;
+				break;
+			}
+		}
+		if (isFind){
+			break;
+		}
+	}
+}
+
+
+
+void CpictureCutDlg::consAdjust( int x , int y )
+{
+	if( ( MODE_PEN == WorkMode ) || ( MODE_RUBBER == WorkMode ) )
+	{
+		cv::Point in(x , y );
+		picturePointRefectToRoiPoint( in , in  );
+
+		if( MODE_PEN == WorkMode )
+		{
+			addAPointToContour( &contours, in  );
+			Update();
+		}
+		else if( MODE_RUBBER == WorkMode )
+		{
+			deleteAPointAtContour( &contours, in );
+			Update();
+		}
+	}
+
+}

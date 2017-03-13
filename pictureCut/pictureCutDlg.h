@@ -9,6 +9,7 @@
 
 #pragma once
 using namespace cv;
+#import <msxml6.dll>
 
 // CpictureCutDlg 对话框
 typedef struct cons
@@ -18,6 +19,31 @@ typedef struct cons
 }CONTOURS_t;
 
 
+typedef struct
+
+{
+
+	int topY;
+
+	int bottomY;
+
+
+}HEIGHT_INTERVAL;
+
+typedef struct
+
+{
+	vector<CvRect> rectVec;
+	HEIGHT_INTERVAL heightValue;
+	String Name;
+}RECT_VECTOR;
+
+typedef enum
+{
+	MODE_NULL = 0 ,
+	MODE_PEN  = 1 ,
+	MODE_RUBBER = 2
+}CONS_WORK_MODE_e;
 
 //CONTOURS_t contoursArray[1024];
 
@@ -37,6 +63,7 @@ public:
 
 // 实现
 private:
+	CONS_WORK_MODE_e WorkMode ;
 	cv::Mat srcMat;
 	bool dupAndZeorInitFlag ;
 	cv::Mat duplicateSrcMat;
@@ -48,8 +75,11 @@ private:
 
 	CvRect  roiRect ; // 限制显示区域的 
 	vector< vector<Point> >  contours ; // srcMat上的连通域 
-
 	vector< int > selectList;// 被选中的contour
+
+	vector<CvRect> splitImageRects; // 将图像抠图后每个图片的Rect列表
+	vector<CvRect> selectSplitImageRects; // 被选中的Rect列表
+
 
 	PictureCutAlgorithm Pca;
 
@@ -67,7 +97,8 @@ private:
 	int imgHeight ;
 	HDC hDC;
 
-	bool cutOutFlag;
+	bool showClipImageFlag; // 是否显示标定结果
+	bool calibrationFlag;
 protected:
 	HICON m_hIcon;
 
@@ -85,8 +116,8 @@ private:
 	void Update( Point *pt1 = NULL, Point *pt2 = NULL ,bool onlyRectRedraw = false );
 	void showMatImgToWnd( CWnd* pWnd, cv::Mat img ,bool forceUpdate = true );
 public:
-	afx_msg void OnBnClickedZoomUp();
-	afx_msg void OnBnClickedZoomDown();
+	afx_msg void OnBnClickedConPen();
+	afx_msg void OnBnClickedRubble();
 	afx_msg void OnThemechangedShowPicture(NMHDR *pNMHDR, LRESULT *pResult);
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	CStatic m_showPicture;
@@ -95,15 +126,26 @@ public:
 
 	afx_msg void OnBnShowSourcePicture();
 	afx_msg void OnEnChangeEdit1();
+	afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
+	void saveCalResult( String cvFileDirect  , vector<RECT_VECTOR>  RelateList );
+	bool rectInSelectSplitImageRects( CvRect );
 	bool isConsHasBeenSelectd( int which );
 	void removeConsSelectd( int which );
 	int clickFind(Point point);	// return -1 is invalid
 	void concourSelect( cv::Point cvPoint );
+	void doMultClipRectSelect( cv::Point start , cv::Point end );
 	void doMultConsSelect( cv::Point start , cv::Point end );
 	void deleteContous();
+	void picturePointRefectToRoiPoint( cv::Point in , cv::Point &out  );
 	void saveContoursAndFile(vector<vector<Point>> contours, cv::Mat *src, const char *filename);
 	cv::Mat * readContoursAndFile(vector<vector<Point>> *contours, const char *filename);
+	void outputLayoutFile();
 	void contourAlphaMask( vector<Point> contour );
+	void XlmGenerate(  String outFile,vector<RECT_VECTOR>  RelateList  );
+	void printOutRelativeListLayout( MSXML2::IXMLDOMDocumentPtr pDoc , MSXML2::IXMLDOMElementPtr xmlRoot , vector<RECT_VECTOR>  RelateList );
+	void printOutRelativeLayout(  MSXML2::IXMLDOMDocumentPtr pDoc ,MSXML2::IXMLDOMElementPtr pElement , RECT_VECTOR  *Relative );
+	void consAdjust( int x , int y );
+
 	// cvCanny threshold1
 	UINT cannyThreshold1;
 	// cvCanny threshold2
@@ -127,8 +169,28 @@ public:
 	afx_msg void OnBnClickedSaveContours();
 	afx_msg void OnBnClickedReadContours2();
 	CButton m_selectbtn;
+	void generateFilterMat();//生成透明度矩阵
 	afx_msg void OnBnCutOut();
 	afx_msg void OnDblclkShowPicture();
 	afx_msg void OnBnClickedRangeSelect();
 	CButton m_rangeSelectbtn;
+
+	//取得以in未输入的点位的搜有联通点的矩形区域
+	CvRect GetConnectAreaRect( cv::Mat &mat  , Point in );
+
+	
+	vector<Point>GetConnectAreaPoint(cv::Mat &mat  , Point in );
+
+	//将mat的素有可见区域分割成n个图像
+	vector<CvRect> SpliteVisiableImage( cv::Mat mat );
+
+	afx_msg void OnBnClickedBiaoding();
+	afx_msg void OnBnClickedSaveCalResult();
+	afx_msg void OnBnClickedShowBiaodingResult();
+	afx_msg void OnBnClickedMergeArea();
+	afx_msg void OnBnClickedMeger();
+	afx_msg void OnBnClickedFix();
+	afx_msg void OnBnClickedSaveLayoutFile();
+
+
 };
