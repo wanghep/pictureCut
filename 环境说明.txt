@@ -1,0 +1,2 @@
+1.使用 vs2010
+2.新建一个环境变量 OPENCV  ： 例如 本机值为 C:\software\opencv\build  需要根据不同的机器改变
