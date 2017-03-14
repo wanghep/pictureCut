@@ -243,14 +243,13 @@ HCURSOR CpictureCutDlg::OnQueryDragIcon()
 }
 
 
-void OnMouseAction(int event,int x,int y,int flags,void *ustc);  //鼠标回调事件函数  
 void CpictureCutDlg::OnBnClickedStart2()
 {
 	CFileDialog dlg(TRUE,("png"),(".png"),OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,("PNG file(*.png)|*.png|jpg file(*.jpg) |*.jpg|jpeg file(*.jpeg) |*.jpeg||"));
 
 	dlg.DoModal();	
 
-	if( dlg.GetPathName().IsEmpty() )
+	if( dlg.GetPathName().IsEmpty() || dlg.GetPathName().GetLength() <= 4 )
 	{
 		std::cout << "read data error!" << std::endl;
 		return ;
@@ -707,15 +706,20 @@ void CpictureCutDlg::deleteContous()
 
 BOOL CpictureCutDlg::PreTranslateMessage(MSG* pMsg)
 {
+	if( srcMat.rows == 0 )
+	{
+		return CDialog::PreTranslateMessage(pMsg);
+	}
+
 	if(pMsg->message == WM_KEYDOWN)
-	 {
+	{
 		if (pMsg->wParam == VK_DELETE )
 		{
 			deleteContous();
 		}
-	 }
-	 if (pMsg->message==WM_LBUTTONDOWN )
-	 {
+	}
+	if (pMsg->message==WM_LBUTTONDOWN )
+	{
 		 
 		if (pMsg->hwnd == GetDlgItem(IDC_SHOW_PICTURE)->m_hWnd)
 		{	
@@ -1490,7 +1494,17 @@ void CpictureCutDlg::OnBnClickedReadContours2()
 		cv::String cvFileName ;
 		cvFileName = dlg.GetPathName().GetBuffer(0);
 
-		//readContoursAndFile( &contours , &srcMat , cvFileName.c_str() );
+		srcMat = readContoursAndFile( &contours , cvFileName.c_str() )->clone();
+			
+		dupAndZeorInitFlag = true;
+		duplicateSrcMat = srcMat.clone();
+
+		backgroundMat = Mat::zeros( srcMat.size(), CV_8UC3); // 初始化背景色为黑色
+
+		alphaMat = Mat( srcMat.size(),CV_8UC3,Scalar(1,1,1)); // 初始化 alpha矩阵
+		
+		Pca.SetMat( srcMat );
+		Update();;
 
 	}
 }
