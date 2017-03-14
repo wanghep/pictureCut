@@ -138,7 +138,7 @@ public:
 	void deleteContous();
 	void picturePointRefectToRoiPoint( cv::Point in , cv::Point &out  );
 	void saveContoursAndFile(vector<vector<Point>> contours, cv::Mat *src, const char *filename);
-	cv::Mat * readContoursAndFile(vector<vector<Point>> *contours, const char *filename);
+	cv::Mat readContoursAndFile(vector<vector<Point>> *contours, const char *filename);
 	void outputLayoutFile();
 	void contourAlphaMask( vector<Point> contour );
 	void XlmGenerate(  String outFile,vector<RECT_VECTOR>  RelateList  );

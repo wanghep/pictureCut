@@ -1371,15 +1371,18 @@ void CpictureCutDlg::saveContoursAndFile(vector<vector<Point>> contours, cv::Mat
 }
 
 
-cv::Mat * CpictureCutDlg::readContoursAndFile(vector<vector<Point>> *contours, const char *filename)
+cv::Mat CpictureCutDlg::readContoursAndFile(vector<vector<Point>> *contours, const char *filename)
 {
-	cv::Mat src;
 	FILE* pFile;
 	pFile = fopen(filename, "rt");
 	if (!pFile)
 	{
-		return NULL;
+		return Mat::zeros(1,1,CV_8UC3);
 	}
+
+	//对当前的contours清空
+	contours->clear();
+
 	int contoursSize;
 	fscanf(pFile, "%d", &contoursSize);
 	for (int i = 0; i < contoursSize; i++)
@@ -1397,7 +1400,7 @@ cv::Mat * CpictureCutDlg::readContoursAndFile(vector<vector<Point>> *contours, c
 	}
 	int matRow, matCol;
 	fscanf(pFile, "%d %d ", &matRow, &matCol);
-	src.create(matRow, matCol, CV_8UC3);
+	cv::Mat src = Mat::zeros( matRow, matCol, CV_8UC3);
 	for (int i = 0; i < src.rows; i++)
 	{
 		for (int j = 0; j < src.cols; j++)
@@ -1407,62 +1410,17 @@ cv::Mat * CpictureCutDlg::readContoursAndFile(vector<vector<Point>> *contours, c
 		}
 	}
 	fclose(pFile);
-	return &src;
+	return src;
 }
 
-
- cv::Mat * readContoursAndFile(vector<vector<Point>> *contours, int contoursSize, int matSize, const char *filename)
-{
-	FILE* pFile;
-	pFile = fopen(filename, "rt");
-	if (!pFile)
-	{
-		return NULL;
-	}
-	fread(contours, sizeof(vector<Point>), contoursSize, pFile);
-	//fread(src, sizeof(uchar), matSize, pFile);
-	/*
-	int i;
-	char s[100], ch;
-	pFile = fopen(filename, "rt");
-	if (!pFile)
-	{
-		return;
-	}
-	bool readFile = TRUE;
-	while (readFile)
-	{
-
-	}
-	int row = 0;
-	while (fgets(s, 100, pFile) != NULL)
-		row++;
-	rewind(pFile);
-	int j = 0;
-	for (int i = 0; i < row; i++)
-	{
-		vector<Point> tempVec = (*contours)[i];
-		while (fscanf(pFile, "%d %d ", &(((*contours)[i])[j].x), &(((*contours)[i])[j].y)))
-		{
-			j++;
-		}
-		
-	}
-	*/
-
-	fclose(pFile);
-
-
-	return NULL;
-}
 
 void CpictureCutDlg::OnBnClickedSaveContours()
 {
-	CFileDialog dlg(FALSE,("con"),(".con"),OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,("cons file(*.con)|*.con|"));
+	CFileDialog dlg(FALSE,("con"),(".con"),OFN_HIDEREADONLY ,("cons file(*.con)|*.con|"));
 
 	dlg.DoModal();	
 
-	if( dlg.GetPathName().IsEmpty() )
+	if( dlg.GetPathName().IsEmpty() || dlg.GetPathName().GetLength() <= 4 )
 	{
 		std::cout << "read data error!" << std::endl;
 		return ;
@@ -1484,7 +1442,7 @@ void CpictureCutDlg::OnBnClickedReadContours2()
 
 	dlg.DoModal();	
 
-	if( dlg.GetPathName().IsEmpty() )
+	if( dlg.GetPathName().IsEmpty() || dlg.GetPathName().GetLength() <= 4 )
 	{
 		std::cout << "read data error!" << std::endl;
 		return ;
@@ -1494,9 +1452,14 @@ void CpictureCutDlg::OnBnClickedReadContours2()
 		cv::String cvFileName ;
 		cvFileName = dlg.GetPathName().GetBuffer(0);
 
-		srcMat = readContoursAndFile( &contours , cvFileName.c_str() )->clone();
-			
+		srcMat = readContoursAndFile( &contours , cvFileName.c_str() );
+		showOutline = true;	
 		dupAndZeorInitFlag = true;
+		roiRect.x = 0;
+		roiRect.y = 0;
+		roiRect.height = srcMat.rows;
+		roiRect.width = srcMat.cols;
+
 		duplicateSrcMat = srcMat.clone();
 
 		backgroundMat = Mat::zeros( srcMat.size(), CV_8UC3); // 初始化背景色为黑色

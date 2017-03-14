@@ -47,3 +47,6 @@ Temporary Items
 .apdisk
 x64
 Debug
+.suo
+.sdf
+.opensdf
