@@ -582,10 +582,10 @@ void CpictureCutDlg::Update(  Point *pt1  , Point *pt2  , bool onlyRectRedraw )
 				for (int i = 0; i< contours.size(); i++)
 				{
 					Scalar color;
-					int thickness = 2;
+					int thickness = 1;
 					if( isConsHasBeenSelectd( i ) )
 					{
-						thickness = 5;
+						thickness = 1;
 						color = CV_RGB(255,0,0 );
 					}
 					else
@@ -1731,8 +1731,8 @@ CvRect getConnectAreaRt(vector<Point> *reVec)
 	sort(yVector.begin(), yVector.end());
 	int x = xVector.at(0);
 	int y = yVector.at(0);
-	int width = xVector.at(xVector.size() - 1) - x + 1;
-	int height = yVector.at(yVector.size() - 1) - y + 1;
+	int width = xVector.at(xVector.size() - 1) - x ;
+	int height = yVector.at(yVector.size() - 1) - y ;
 	CvRect reCV( x, y, width, height );
 
 	return reCV;
@@ -2199,6 +2199,7 @@ cv::Mat createCmpMat(cv::Mat mat, Point in, vector<Point> *vecMerge, CvRect reRe
 	return tmpMat;
 
 }
+
 
 //去除轮廓中多余的点
 void removeRedundanceInContour(vector<Point> * vecMerge){
@@ -2921,9 +2922,38 @@ BOOL CpictureCutDlg::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 	return CDialogEx::OnSetCursor(pWnd, nHitTest, message);
 }
 
+//向轮廓中插入一个点
+void insertPointInContour(vector<Point> *srcVec, Point in){
+	int index = 0;
+	int distance = (srcVec->at(0).x - in.x) * (srcVec->at(0).x - in.x) + (srcVec->at(0).y - in.y) * (srcVec->at(0).y - in.y);
+	for (int i = 1; i < srcVec->size(); i++)
+	{
+		Point point = srcVec->at(i);
+		if ((point.x - in.x) * (point.x - in.x) + (point.y - in.y) * (point.y - in.y) < distance){
+			index = i;
+			distance = (point.x - in.x) * (point.x - in.x) + (point.y - in.y) * (point.y - in.y);
+		}
+	}
+
+	Point tarPoint = srcVec->at(index);
+	if (in.x < tarPoint.x){
+		srcVec->insert(srcVec->begin() + index, in);
+	}
+	else if (in.x > tarPoint.x){
+		srcVec->insert(srcVec->begin() + index + 1, in);
+	}
+	else{
+		if (in.y < tarPoint.y){
+			srcVec->insert(srcVec->begin() + index, in);
+		}
+		else if (in.y > tarPoint.y){
+			srcVec->insert(srcVec->begin() + index + 1, in);
+		}
+	}
+
+}
+
 //遍历所有轮廓在符合条件的轮廓中添加一点
-
-
 void addAPointToContour(vector<vector<Point>> *src, Point in){
 
 	for (int i = 0; i < src->size(); i++)
@@ -2936,13 +2966,13 @@ void addAPointToContour(vector<vector<Point>> *src, Point in){
 		{
 			Point point = tempVec.at(j);
 			if (abs(point.x - in.x) + abs(point.y - in.y) < 5){
-				src->at(i).push_back( in );
+				insertPointInContour( &(src->at(i)) , in );
 				break;
 			}
 		}
 		if( j < tempVec.size() )
 		{
-			removeRedundanceInContour( &(src->at(i)) );
+			//removeRedundanceInContour( &(src->at(i)) );
 		}
 		
 
@@ -2992,25 +3022,26 @@ void deleteAPointAtContour(vector<vector<Point>> *src, Point in){
 	bool isFind = false;
 	for (int i = 0; i < src->size(); i++)
 	{
-		vector<Point> tempVec = src->at(i);
-		for (int j = 0; j < tempVec.size(); j++)
+		vector<Point> *tempVec = &src->at(i);
+		for (int j = 0; j < tempVec->size(); j++)
 		{
-			Point point = tempVec.at(j);
+			Point point = tempVec->at(j);
 			if (point.x == in.x && point.y == in.y){
-				tempVec.erase(tempVec.begin() + j);
-
+				tempVec->erase(tempVec->begin() + j);
+				/*
 				vector<vector<Point>> reBuildCon = getAfterDelContours( (*src)[i] );
 				src->erase( src->begin() + i ) ;
 				for( int m = 0 ; m < reBuildCon.size() ; m ++ )
 				{
 					src->push_back( reBuildCon[m] );
 				}
+				*/
 				isFind = true;
 				break;
 			}
 		}
 		if (isFind){
-			break;
+			//break;
 		}
 	}
 }
